@@ -1,0 +1,36 @@
+﻿[project]
+name = "SmartDesk-Agent"
+version = "0.1.0"
+description = "SmartDesk-Agent 鈥斺€?鍩轰簬 LangGraph 涓?MCP 鐨勪紒涓氬唴閮ㄦ湇鍔″彴鍙楁帶鎵ц Agent"
+requires-python = ">=3.12"
+dependencies = [
+    # 缂栨帓涓庢ā鍨?    "langchain>=1.0",
+    "langchain-core>=1.0",
+    "langgraph>=1.0",
+    "langchain-openai>=1.0",
+    "langgraph-checkpoint-sqlite>=2.0",
+    "langgraph-checkpoint-postgres>=3.0",
+    "psycopg[binary]>=3.2",
+    "python-dotenv>=1.0",
+    # 宸ュ叿灞傦細fastmcp 4.x 渚濊禆 mcp>=2锛岃€?langchain-mcp-adapters 0.3.x 瑕佹眰 mcp<2锛?    # 鎵€浠ヨ繖涓ゆ潯蹇呴』閿佸湪 3.x / 1.x锛屽惁鍒?get_tools() 浼?ImportError: RequestContext
+    "fastmcp>=3.2,<4",
+    "mcp>=1.24,<2",
+    "langchain-mcp-adapters>=0.3,<0.4",
+    # 妫€绱笌绮炬帓
+    "pymilvus>=2.6",
+    "httpx>=0.27",
+    # HTTP 灞傦紙/chat/stream 璧?StreamingResponse锛孲SE 涓嶉渶瑕侀澶栦緷璧栵級
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    # 鐭ヨ瘑搴撶敓浜ч摼锛氬埗搴?md 鈫?PDF 鈫?MinerU 瑙ｆ瀽 鈫?鍒囧垎
+    "reportlab>=4.0",
+    "pypdf>=5.0",
+    "mineru-open-sdk>=0.2",
+    "langchain-text-splitters>=1.0",
+]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+

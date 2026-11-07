@@ -1,0 +1,107 @@
+﻿# SmartDesk-Agent 鏈湴渚濊禆鏈嶅姟
+# 鍚姩锛歝d deploy; docker compose up -d
+# 楠屾敹锛歞ocker compose ps锛堢瓑 milvus 鐨?HEALTH 鍙?healthy锛岀害 1-3 鍒嗛挓锛?#
+# 璇存槑锛歁inIO 鍦?2025 骞存妸绀惧尯鐗堥暅鍍忎粠 Docker Hub / Quay 鍏ㄩ儴涓嬫灦锛?# 瀹樻柟 compose 閲岀殑 minio/minio:<RELEASE...> 宸茬粡鎷変笉鍒般€?# 鍥犳杩欓噷鏀圭敤 Milvus standalone 鐨勩€屾湰鍦板瓨鍌ㄣ€嶅悗绔紙COMMON_STORAGETYPE=local锛夛紝
+# 灏戜竴涓鍣ㄣ€佸皯涓€浠藉唴瀛橈紝鍔熻兘锛坉ense+sparse 娣峰悎妫€绱級瀹屽叏涓嶅彈褰卞搷銆?# 濡傞渶鍒囧洖 MinIO锛岃鏂囦欢鏈熬娉ㄩ噴閲岀殑 fallback銆?name: smartdesk
+
+services:
+  postgres:
+    image: ${PG_IMAGE}
+    container_name: smartdesk-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DB}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+      # 鍏抽敭锛歜ind mount 鐩綍閲屽彲鑳芥湁 .gitkeep 绛夐殣钘忔枃浠讹紝initdb 瑕佹眰鏁版嵁鐩綍涓虹┖锛?      # 鎵€浠ユ妸 PGDATA 鎸囧埌鎸傝浇鐐逛笅鐨勫瓙鐩綍锛堝畼鏂规帹鑽愬仛娉曪級
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: Asia/Shanghai
+    ports:
+      - "${PG_PORT}:5432"
+    volumes:
+      - ./data/pg:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d ${PG_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  etcd:
+    image: ${ETCD_IMAGE}
+    container_name: smartdesk-etcd
+    restart: unless-stopped
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    volumes:
+      - ./data/etcd:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  milvus:
+    image: ${MILVUS_IMAGE}
+    container_name: smartdesk-milvus
+    restart: unless-stopped
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      # 鍏抽敭锛氫笉渚濊禆瀵硅薄瀛樺偍锛屽悜閲?绱㈠紩鏁版嵁鐩存帴鍐欐湰鍦板嵎
+      COMMON_STORAGETYPE: local
+      LOCALSTORAGE_PATH: /var/lib/milvus/data
+      TZ: Asia/Shanghai
+    ports:
+      - "${MILVUS_PORT}:19530"
+      - "${MILVUS_HTTP_PORT}:9091"
+    volumes:
+      - ./data/milvus:/var/lib/milvus
+    depends_on:
+      - etcd
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 180s
+      timeout: 20s
+      retries: 5
+
+  attu:
+    image: ${ATTU_IMAGE}
+    container_name: smartdesk-attu
+    restart: unless-stopped
+    environment:
+      MILVUS_URL: milvus:19530
+    ports:
+      - "${ATTU_PORT}:3000"
+    depends_on:
+      - milvus
+
+# ============================================================
+# Fallback锛氬鏋滃摢澶╂兂鍒囧洖 MinIO锛堟垨鏈湴瀛樺偍鍦ㄤ綘鐨?Milvus 鐗堟湰涓婁笉鍙敤锛夛紝
+# 1) 鍙栨秷涓嬮潰娉ㄩ噴锛?) milvus 鐨?environment 鎹㈠洖锛?#      ETCD_ENDPOINTS: etcd:2379
+#      MINIO_ADDRESS: minio:9000
+#      MINIO_ACCESS_KEY_ID: ${MINIO_USER}
+#      MINIO_SECRET_ACCESS_KEY: ${MINIO_PASSWORD}
+#    骞跺垹鎺?COMMON_STORAGETYPE / LOCALSTORAGE_PATH锛?) depends_on 鍔犲洖 minio銆?# 娉ㄦ剰 Bitnami 闀滃儚鐨勬暟鎹洰褰曟槸 /bitnami/minio/data锛岀幆澧冨彉閲忔槸 ROOT_USER/ROOT_PASSWORD銆?#
+#  minio:
+#    image: ${MINIO_IMAGE}
+#    container_name: smartdesk-minio
+#    restart: unless-stopped
+#    environment:
+#      MINIO_ROOT_USER: ${MINIO_USER}
+#      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+#    command: minio server /bitnami/minio/data --console-address ":9001"
+#    ports:
+#      - "${MINIO_PORT}:9000"
+#      - "${MINIO_CONSOLE_PORT}:9001"
+#    volumes:
+#      - ./data/minio:/bitnami/minio/data
+# ============================================================

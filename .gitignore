@@ -1,0 +1,27 @@
+﻿# 隐私文件
+.env
+.data/
+
+# 数据库与存储卷（容器数据持久化）
+deploy/data/
+
+# 系统与 IDE 临时
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+
+# 前端构建产物
+node_modules/
+dist/
+.vite/
+.npm-cache/
+
+# 后端虚拟环境
+.venv/
+__pycache__/
+*.py[cod]
+
+# 本地 Git portable
+.git-portable/
