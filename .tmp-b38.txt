@@ -1,0 +1,846 @@
+[assistant]
+The "welcome" screenshot is not the welcome state — it restored the last session (sessions.current persisted to localStorage from the previous run). Because `/chat` without `?thread=` → sessions.ensure() returns existing current (demo-approve-04).
+
+To screenshot the welcome state, I need a fresh profile (no smartdesk.sessions in localStorage). Use a new profile dir with just identity seeded... but then identity seeding requires the same profile. Approach: new profile → visit __seed.html (sets identity only) → screenshot /chat. But sessions may not exist yet → welcome shows. 
+
+Wait: does visiting __seed.html create sessions? No, it's a static HTML, doesn't load the app.
+
+So: new profile P2 → __seed.html → then /chat screenshot = welcome. Let me also verify that /chat with no session creates one (sessions.ensure) — yes but items empty → showWelcome true. 
+
+Let me do that.
+
+Also, when the demo runs fresh, the welcome state is what a user sees first — good.
+
+Then: docs/screenshots for README + README first screen + mermaid architecture diagram.
+
+Also cleanup:
+- delete `frontend/public/__seed.html`
+- prune stale pending approvals? Keep the demo ones with real threads (demo-approve-01/03/04). Let me delete approvals without thread_id (CLI legacy) to reduce noise? Hmm, users may want them.
+
+Actually the pending count 14: let me look at what they are. If many are stale test leftovers from earlier phases (t-* threads already deleted), their resume would 404 → the 通过 button would error. Better to prune those.
+
+Let me query the sqlite approvals.
+
+[assistant • pwsh]
+{"command":"cd D:\\zuixin\n.\\.venv\\Scripts\\python.exe -c \"\nimport sqlite3, json\nc = sqlite3.connect('.data/tickets.sqlite')\nrows = list(c.execute('select id, op, target, risk, status, requester, thread_id, created_at from approvals order by id desc limit 20'))\nfor r in rows:\n    print(r[0], r[1], r[2], r[3], r[4], r[5], repr(r[6]), r[7])\nprint('pending total:', list(c.execute(\\\"select count(*) from approvals where status='pending'\\\"))[0][0])\n\"","description":"Inspect recent approvals rows","timeoutMs":60000}
+
+[tool • pwsh]
+[stderr]
+* : 无法将“*”项识别为 cmdlet、函数、脚本文件或可运行程序的名称。请检查名称的拼写，如果包括路径，请确保路径正确，然后再试一次。
+所在位置 行:8 字符: 55
++ print('pending total:', list(c.execute(\"select count(*) from approva ...
++                                                       ~
+    + CategoryInfo          : ObjectNotFound: (*:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+[exit code: 1]
+
+[assistant]
+
+
+[assistant • write]
+{"content":"import sqlite3\n\nc = sqlite3.connect(\".data/tickets.sqlite\")\nrows = list(\n    c.execute(\n        \"select id, op, target, risk, status, requester, thread_id, created_at \"\n        \"from approvals order by id desc limit 20\"\n    )\n)\nfor r in rows:\n    print(r[0], r[1], r[2], r[3], r[4], r[5], repr(r[6]), r[7])\nprint(\"pending total:\", list(c.execute(\"select count(*) from approvals where status='pending'\"))[0][0])\n","file_path":"D:\\zuixin\\.tmp-inspect.py"}
+
+[tool • write]
+<path>D:\zuixin\.tmp-inspect.py</path>
+<type>file</type>
+<content>
+Created file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"cd D:\\zuixin\n.\\.venv\\Scripts\\python.exe .tmp-inspect.py","description":"Inspect approvals data","timeoutMs":60000}
+
+[tool • pwsh]
+86 close_ticket TK-20261106-0008 write_irreversible pending u-1001 'demo-approve-04' 2026-11-06 21:11:52
+85 close_ticket TK-20261106-0006 write_reversible pending u-1001 'demo-approve-03' 2026-11-06 21:11:13
+84 close_ticket TK-20261106-0005 write_reversible pending u-1001 'demo-approve-01' 2026-11-06 21:10:28
+76 create_ticket VPN �ͻ���֤����ڣ�Ӱ�� 2 �� write_reversible approved u-1001 '' 2026-11-06 12:13:06
+75 create_ticket VPN �ͻ���֤����ڣ�Ӱ�� 2 �ˣ��轨������ write_reversible approved u-1001 '' 2026-11-06 11:49:37
+74 create_ticket ���̽�ˮ��Ӱ��1�� write_reversible pending u-1001 '' 2026-11-06 10:49:51
+73 create_ticket ����ʧ�飬Ӱ��1�� write_reversible approved u-1001 '' 2026-11-06 10:49:18
+72 close_ticket TK-20261106-0003 write_irreversible pending u-9001 '' 2026-11-06 10:42:06
+71 create_ticket �����ɶ���Ӱ��1�� write_reversible pending u-1001 '' 2026-11-06 10:41:53
+70 create_ticket �����ɶ���Ӱ��1�� write_reversible approved u-1001 '' 2026-11-06 10:41:37
+69 close_ticket TK-20261106-0003 write_irreversible approved u-9001 '' 2026-11-06 10:27:50
+68 close_ticket TK-20261106-0001 write_irreversible approved u-9001 '' 2026-11-06 10:27:12
+67 close_ticket TK-20261106-0001 write_reversible approved u-1001 '' 2026-11-06 10:26:52
+66 create_ticket ��ʾ��������Ӱ��2�� write_reversible approved u-1001 '' 2026-11-06 10:26:29
+65 create_ticket ��ʾ��������Ӱ��2�� write_reversible pending u-1001 '' 2026-11-06 10:26:20
+64 create_ticket ��ʾ��������Ӱ��2�� write_reversible approved u-1001 '' 2026-11-06 10:21:06
+63 create_ticket VPN �ͻ���װ���ϣ�Ӱ�� 1 �� write_reversible approved u-2001 '' 2026-11-06 10:19:09
+62 create_ticket ����ʧ�飬Ӱ��1�� write_reversible approved u-1001 '' 2026-11-06 10:18:12
+61 close_ticket TK-20261105-0006 write_reversible pending u-1001 '' 2026-11-06 10:17:44
+60 create_ticket ������𻵣�Ӱ��1�� write_reversible rejected u-1001 '' 2026-11-06 10:17:26
+pending total: 14
+
+
+[assistant]
+There are 14 pending; many legacy ones (no thread_id, from CLI before the fix) that can't be resumed from web. The web UI shows them as blocked ("缺 thread_id").
+
+For a clean demo state, I'd prune the legacy pending rows without thread_id (they're stale artifacts of development, and their threads are gone). Keep the three demo-approve ones (85, 84, 86) which are real, resumable.
+
+Let me delete pending approvals with thread_id = '' (that's ~11 rows), which leaves 3 pending — matching the story nicely.
+
+Wait, careful: are those legacy pending rows part of "demo data" the user wants? They came from my/CLI tests during development. They'd only confuse. Prune.
+
+Then approvals: pending 3, approved ~51, rejected 11.
+
+Also delete my fixture ticket? Keep TK-20261106-0008 (open, owned by u-2002) — it's referenced by demo-approve-04. Keep.
+
+Then: regenerate screenshots (pending count changes), write docs/screenshots + README first screen, and mermaid architecture diagram.
+
+Let me prune now.
+
+[assistant • write]
+{"content":"\"\"\"清掉本轮之前命令行直连产生的 pending 审批（没有 thread_id，网页端本来也无法恢复）。\"\"\"\n\nimport sqlite3\n\nc = sqlite3.connect(\".data/tickets.sqlite\")\nstale = list(c.execute(\"select id, op, target from approvals where status='pending' and coalesce(thread_id,'')=''\"))\nfor row in stale:\n    print(\"delete\", row)\nc.execute(\"delete from approvals where status='pending' and coalesce(thread_id,'')=''\")\nc.commit()\nprint(\"pending left:\", list(c.execute(\"select count(*) from approvals where status='pending'\"))[0][0])\nprint(\"total:\", list(c.execute(\"select count(*) from approvals\"))[0][0])\n","file_path":"D:\\zuixin\\.tmp-prune.py"}
+
+[tool • write]
+<path>D:\zuixin\.tmp-prune.py</path>
+<type>file</type>
+<content>
+Created file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"cd D:\\zuixin\n.\\.venv\\Scripts\\python.exe .tmp-prune.py","description":"Prune stale pending approvals","timeoutMs":60000}
+
+[tool • pwsh]
+delete (6, 'close_ticket', 'TK-20261102-0002')
+delete (14, 'create_ticket', 'Ա�����޼����𻵣����󽨹���')
+delete (17, 'close_ticket', 'TK-20261102-0006')
+delete (25, 'create_ticket', 'SSH ��¼ 502 ������Ӱ�� 1 ��')
+delete (26, 'create_ticket', 'Redis ���ӳ�ʱ��Ӱ�� 5 ��')
+delete (47, 'close_ticket', 'TK-20261105-0004')
+delete (61, 'close_ticket', 'TK-20261105-0006')
+delete (65, 'create_ticket', '��ʾ��������Ӱ��2��')
+delete (71, 'create_ticket', '�����ɶ���Ӱ��1��')
+delete (72, 'close_ticket', 'TK-20261106-0003')
+delete (74, 'create_ticket', '���̽�ˮ��Ӱ��1��')
+pending left: 3
+total: 65
+
+
+[assistant]
+Now pending = 3, total = 65. 
+
+Now: build the docs screenshots + README first screen + mermaid architecture diagram.
+
+Steps:
+1. Re-screenshot welcome (fresh profile), chat (approve doc), approvals, tickets → save into `docs/screenshots/` (or replace docs/ui-preview? The user's earlier plan: `docs/screenshots/` for final screenshots). Let me use `docs/screenshots/`.
+2. Get mermaid from `GET /api/v1/graph/mermaid`, convert to an image? No mermaid CLI. Instead, render the mermaid code block in README (GitHub renders mermaid natively) — simpler and no binary. Good: put mermaid in README.
+3. Rewrite README first screen: title, tagline, screenshot, features, quickstart, architecture (mermaid), tech stack, eval numbers, known boundaries.
+
+Let me first take the 4 screenshots.
+
+For the welcome screenshot: new profile + seed identity.
+
+Let me create docs/screenshots dir.
+
+[assistant • pwsh]
+{"command":"$edge = \"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe\"\n$prof = \"D:\\zuixin\\.tmp-edge-fresh\"\nRemove-Item -Recurse -Force $prof -ErrorAction SilentlyContinue\nNew-Item -ItemType Directory -Force -Path \"D:\\zuixin\\docs\\screenshots\" | Out-Null\n& $edge --headless=new --disable-gpu --no-first-run --no-default-browser-check --user-data-dir=\"$prof\" --virtual-time-budget=3000 --dump-dom \"http://localhost:5173/__seed.html\" 2>&1 | Out-Null\n& $edge --headless=new --disable-gpu --hide-scrollbars --no-first-run --no-default-browser-check --user-data-dir=\"$prof\" --force-device-scale-factor=1 --window-size=1560,980 --virtual-time-budget=9000 --screenshot=\"D:\\zuixin\\docs\\screenshots\\01-welcome.png\" \"http://localhost:5173/chat\" 2>&1 | Out-Null\nGet-Item \"D:\\zuixin\\docs\\screenshots\\01-welcome.png\" | Select-Object Name,Length","description":"Screenshot welcome state with fresh profile","timeoutMs":240000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+Name           Length
+----           ------
+01-welcome.png 146302
+
+
+
+
+[assistant]
+Welcome state renders well in the real app. Nits:
+1. Right panel "运行时 · 等待提问" — 9 nodes all 未开始, 0/9. Fine.
+2. The 运行时 panel's risk ladder shows 只读 active (because no detail → default). Could be neutral. Minor.
+3. The welcome content is a bit left-heavy? It spans 359..1093 within the chat column (238..1212). It's centered-ish. Composer is 359..1054. Slight mismatch — the welcome block max-width 740, composer 740? Composer looks wider (359..1054 = 695?). Eh close enough.
+4. 等价命令行 block shows `python -m scripts.run_graph state --thread web-...` — good.
+5. "已回复"? no. Good.
+6. The 侧栏 "新会话" item exists with 空闲 · 刚刚.
+
+Good enough. Now capture chat/approvals/tickets into docs/screenshots with the seeded profile (P_SEED has identity + sessions).
+
+For the chat screenshot, use ?thread=demo-approve-04 with profile .tmp-edge-seed.
+
+Let me do the three, then check one.
+
+[assistant • pwsh]
+{"command":"$edge = \"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe\"\n$prof = \"D:\\zuixin\\.tmp-edge-seed\"\n$shots = @(\n  @(\"02-chat-approval\", \"http://localhost:5173/chat?thread=demo-approve-04\"),\n  @(\"03-approvals\", \"http://localhost:5173/approvals\"),\n  @(\"04-tickets\", \"http://localhost:5173/tickets\")\n)\nforeach ($s in $shots) {\n  & $edge --headless=new --disable-gpu --hide-scrollbars --no-first-run --no-default-browser-check --user-data-dir=\"$prof\" --force-device-scale-factor=1 --window-size=1560,980 --virtual-time-budget=9000 --screenshot=\"D:\\zuixin\\docs\\screenshots\\$($s[0]).png\" $s[1] 2>&1 | Out-Null\n  Get-Item \"D:\\zuixin\\docs\\screenshots\\$($s[0]).png\" | Select-Object Name,Length\n}","description":"Capture chat, approvals, tickets screenshots","timeoutMs":300000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+Name                 Length
+----                 ------
+02-chat-approval.png 173201
+03-approvals.png     169410
+04-tickets.png       185678
+
+
+
+
+[assistant]
+Board now shows 3 pending — clean. 
+
+One issue: the first card's 通过 button is disabled because "发起人不能批准自己的单". Since the screenshot identity is u-1001 (also requester), it's correct behavior. But for a README screenshot, showing an enabled 通过 button would be nicer. I could seed identity as u-9002 for the approval screenshot (a different approver) — then card 1 would be actionable.
+
+Let me do that: create a second seeded profile with u-9002 roles approver,kb_owner, then re-shoot 03-approvals.
+
+Also then the chat doc screenshot would show "isRequest"? No, chat uses the payload baked at interrupt (mode decide) — same.
+
+Let me seed another profile and re-shoot approvals.
+
+[assistant • write]
+{"content":"<!doctype html>\n<meta charset=\"utf-8\" />\n<title>seed</title>\n<script>\n  localStorage.setItem(\n    'smartdesk.identity',\n    JSON.stringify({ userId: 'u-9002', tenantId: 'tenant-demo', roles: ['approver', 'kb_owner'] }),\n  )\n  localStorage.setItem(\n    'smartdesk.sessions',\n    JSON.stringify(['demo-approve-04', 'demo-approve-03', 'demo-approve-01']),\n  )\n  document.title = 'seeded'\n</script>\n","file_path":"D:\\zuixin\\frontend\\public\\__seed2.html"}
+
+[tool • write]
+<path>D:\zuixin\frontend\public\__seed2.html</path>
+<type>file</type>
+<content>
+Created file
+</content>
+
+[assistant]
+Hmm — I don't know the exact localStorage format for sessions. `sessions.ts` stores items as `SessionItem[]` under 'smartdesk.sessions'. An array of strings would break parsing (may be handled gracefully with try/catch).
+
+For approvals screenshot, only identity matters. Let me simplify __seed2.html to identity only.
+
+Actually simpler: reuse the same file structure but only identity. Let me rewrite it.
+
+[assistant • write]
+{"content":"<!doctype html>\n<meta charset=\"utf-8\" />\n<title>seed</title>\n<script>\n  localStorage.setItem(\n    'smartdesk.identity',\n    JSON.stringify({ userId: 'u-9002', tenantId: 'tenant-demo', roles: ['approver', 'kb_owner'] }),\n  )\n  document.title = 'seeded'\n</script>\n","file_path":"D:\\zuixin\\frontend\\public\\__seed2.html"}
+
+[tool • write]
+<path>D:\zuixin\frontend\public\__seed2.html</path>
+<type>file</type>
+<content>
+Updated file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$edge = \"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe\"\n$prof = \"D:\\zuixin\\.tmp-edge-approver\"\nRemove-Item -Recurse -Force $prof -ErrorAction SilentlyContinue\n& $edge --headless=new --disable-gpu --no-first-run --no-default-browser-check --user-data-dir=\"$prof\" --virtual-time-budget=3000 --dump-dom \"http://localhost:5173/__seed2.html\" 2>&1 | Out-Null\n& $edge --headless=new --disable-gpu --hide-scrollbars --no-first-run --no-default-browser-check --user-data-dir=\"$prof\" --force-device-scale-factor=1 --window-size=1560,980 --virtual-time-budget=9000 --screenshot=\"D:\\zuixin\\docs\\screenshots\\03-approvals.png\" \"http://localhost:5173/approvals\" 2>&1 | Out-Null\nGet-Item \"D:\\zuixin\\docs\\screenshots\\03-approvals.png\" | Select-Object Name,Length","description":"Screenshot approvals as approver identity","timeoutMs":240000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+Name             Length
+----             ------
+03-approvals.png 167725
+
+
+
+
+[assistant]
+Now card 1 shows an enabled 通过 (靛蓝) with hint "点通过会用该会话的 thread_id 恢复执行" — exactly the story.
+
+Identity card bottom: 李敏 / 主管 · 知识库 owner · tenant-... (truncated "tenant-..."). Minor truncation; acceptable.
+
+Now: README first screen + mermaid architecture + docs updates.
+
+Let me get the mermaid from the API.
+
+[assistant • pwsh]
+{"command":"curl.exe -s \"http://127.0.0.1:8010/api/v1/graph/mermaid\" -H \"X-User-Id: u-1001\" | Out-File -Encoding utf8 \"D:\\zuixin\\.tmp-mermaid.json\"\nGet-Content \"D:\\zuixin\\.tmp-mermaid.json\" -Raw | Select-Object -First 1","description":"Fetch mermaid graph from API","timeoutMs":60000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+{"mermaid":"---\nconfig:\n  flowchart:\n    curve: linear\n---\ngraph TD;\n\t__start__([<p>__start__</p>]):::first\n\tclassify_request(classify_request)\n\tgather_evidence(gather_evidence)\n\tanswer_with_citations(answer_with_citations)\n\tplan_action(plan_action)\n\task_missing_info(ask_missing_info)\n\tconfirm_action(confirm_action)\n\tapprove_action(approve_action)\n\texecute_action(execute_action)\n\tcompose_reply(compose_reply)\n\t__end__([<p>__end__</p>]):::last\n\t__start__ --> classify_request;\n\tanswer_with_citations --> compose_reply;\n\tapprove_action -.-> compose_reply;\n\tapprove_action -.-> execute_action;\n\task_missing_info --> plan_action;\n\tclassify_request -.-> compose_reply;\n\tclassify_request -.-> gather_evidence;\n\tconfirm_action -.-> approve_action;\n\tconfirm_action -.-> compose_reply;\n\tconfirm_action -.-> execute_action;\n\texecute_action --> compose_reply;\n\tgather_evidence -.-> answer_with_citations;\n\tgather_evidence -.-> plan_action;\n\tplan_action -.-> approve_action;\n\tplan_action -.-> ask_missing_info;\n\tplan_action -.-> compose_reply;\n\tplan_action -.-> confirm_action;\n\tplan_action -.-> execute_action;\n\tcompose_reply --> __end__;\n\tclassDef default fill:#f2f0ff,line-height:1.2\n\tclassDef first fill-opacity:0\n\tclassDef last fill:#bfb6fc\n"}
+
+
+
+[assistant]
+I have the mermaid source. I'll hand-write a cleaner mermaid diagram for the README (with Chinese labels + risk gates) rather than the raw LangGraph output, since raw uses English node ids. Actually README better with a curated mermaid:
+
+```mermaid
+flowchart TD
+  S([用户提问]) --> C{classify_request<br/>意图分类}
+  C -->|chat| R[compose_reply<br/>直接回]
+  C -->|knowledge| G[gather_evidence]
+  C -->|action| G
+  G -->|knowledge| A[answer_with_citations]
+  G -->|action| P[plan_action<br/>参数抽取]
+  P -->|缺参数| M[ask_missing_info]
+  M --> P
+  P -->|只读| E
+  P -->|可逆写| CF[confirm_action<br/>本人确认]
+  P -->|不可逆写| AP[approve_action<br/>主管审批]
+  CF -->|改参数升级风险| AP
+  CF --> E[execute_action]
+  AP --> E
+  E --> R
+  A --> R
+```
+
+That's readable and accurate.
+
+Now let me read the current README to rewrite the top section. It's large probably. Let me check size/head.
+
+[assistant • pwsh]
+{"command":"cd D:\\zuixin\n(Get-Item README.md).Length\n(Get-Content README.md).Count","description":"Check README size","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+6002
+90
+
+
+[assistant]
+
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\README.md"}
+
+[tool • read]
+<path>D:\zuixin\README.md</path>
+<type>file</type>
+<content>
+1: # SmartDesk AI · 企业内部服务台 Agent
+2: 
+3: 用自然语言提问或提需求，Agent 要么给出**带引用的答案**，要么生成**待确认的工单**，要么停在**人工审批**等有权限的人点头。
+4: 
+5: 核心不是"把知识库接进模型"，而是把**回答**和**动作**分开：
+6: 
+7: - 回答：只依据检索到的制度，强制带 `[1][2]` 引用，找不到就说"知识库没有这条"并给下一步；
+8: - 动作：按危险程度分级——只读直通、可撤销由提单人确认、不可逆/对外必须审批；
+9: - 停下来的时候，状态写进 checkpoint，**进程退出后用同一个 `thread_id` 还能接着批**。
+10: 
+11: ## 架构
+12: 
+13: ```
+14: START → classify_request → gather_evidence
+15:                             ├─(知识型)→ answer_with_citations → compose_reply → END
+16:                             └─(动作型)→ plan_action
+17:                                          ├─ 缺参数 → ask_missing_info（interrupt）
+18:                                          ├─ 可撤销 → confirm_action（interrupt）
+19:                                          ├─ 不可逆 → approve_action（interrupt）
+20:                                          └─ 只读   → execute_action
+21:                                          → execute_action → compose_reply → END
+22: ```
+23: 
+24: 9 个节点、3 道人类闸门、5 个路由函数（分支全部集中在 `backend/app/agents/graph.py`，节点只返回字段）。
+25: 
+26: | 层 | 技术 |
+27: |---|---|
+28: | 编排 | LangGraph 1.x（`StateGraph` / `interrupt` / `Command` / checkpointer） |
+29: | 模型 | LangChain 1.x（`init_chat_model` + `with_structured_output`） |
+30: | 检索 | Milvus（稠密 1024 维 + 内置 BM25，服务端 `RRFRanker(k=60)`） |
+31: | 工具 | FastMCP 2 个 server（9 个工具），`MultiServerMCPClient` 装配，权限在 server 侧 |
+32: | 持久化 | PostgreSQL（`PostgresSaver`）+ 本地 SQLite 兜底；`approvals` 表存审批 |
+33: | 后端 | FastAPI + SSE（`/chat/stream`、`/runs/{id}/resume` 等） |
+34: | 前端 | Vue3 + Vite + TypeScript + Element Plus（会话 / 审批 / 工单三页） |
+35: 
+36: ## 目录
+37: 
+38: ```
+39: backend/app/
+40:   agents/           主图与节点：graph.py state.py checkpoint.py knowledge.py
+41:     nodes/          9 个节点 + 动作规则表（action_spec.py）
+42:     rag/            Milvus 读写、embedding、MinerU 解析、结构感知切分
+43:     tools/          MCP 客户端与工具封装
+44:     prompts/        分类 / 作答提示词
+45:   mcp/servers/      ticket_server.py / kb_server.py / guard.py（鉴权）
+46:   api/              main.py routes.py streaming.py deps.py
+47: frontend/src/        三页 + SSE 客户端
+48: scripts/             run_graph（CLI）/ ingest_docs（入库）/ eval_rag（评测）
+49: deploy/              docker-compose.yml（Milvus / etcd / PostgreSQL / attu）
+50: docs/kb/             知识库源文档（7 份虚构制度）、PDF、解析产物、chunks
+51: docs/eval/           51 条评测集与报告
+52: ```
+53: 
+54: ## 快速开始
+55: 
+56: ```bash
+57: # 0) 环境：Python 3.12 + Node 20+ + Docker Desktop
+58: #    依赖已装在 .venv（见 pyproject.toml）
+59: 
+60: # 1) 依赖服务（Milvus / PostgreSQL）
+61: docker compose -f deploy/docker-compose.yml up -d
+62: docker compose -f deploy/docker-compose.yml ps      # 等 milvus healthy
+63: 
+64: # 2) 配置环境变量（自己填 key，不要提交）
+65: cp .env.example .env    # 填 DEEPSEEK_API_KEY、DASHSCOPE_API_KEY
+66: 
+67: # 3) CLI：知识问答 / 建单 / 审批
+68: .venv/Scripts/python.exe -m scripts.run_graph run --thread t1 -m "年假有多少天？"
+69: .venv/Scripts/python.exe -m scripts.run_graph run --thread t2 -m "帮我建个工单：VPN 连不上"
+70: .venv/Scripts/python.exe -m scripts.run_graph resume --thread t2 --approve
+71: 
+72: # 4) HTTP + SSE
+73: .venv/Scripts/python.exe -m uvicorn backend.app.api.main:app --port 8010
+74: 
+75: # 5) 前端（另开终端）
+76: cd frontend && npm install && npm run dev     # 浏览器开 http://localhost:5173
+77: ```
+78: 
+79: 首次使用需要入库（仓库未提交向量数据）：
+80: 
+81: ```bash
+82: .venv/Scripts/python.exe -m scripts.ingest_docs --md docs/kb/md --to-milvus
+83: ```
+84: 
+85: ## 评测
+86: 
+87: 51 条标注问句（标注到"文档 + 小节"）对 97 个 chunk，20 条端到端用例：
+88: 
+89: ```bash
+90: .venv/Scripts/python.exe -m scripts.eval_rag --answers 20
+91: ```
+92: 
+93: | 指标 | 数值 |
+94: |---|---|
+95: | Recall@1 / Recall@3 | 82.35% / **96.08%** |
+96: | MRR@3 | 0.892 |
+97: | 端到端引用准确率 | **100%** |
+98: | 检索 P95 / 端到端 P95 | 310–530 ms / 2.9–6.4 s（随模型排队波动） |
+99: 
+100: ## 演示数据说明
+101: 
+102: `docs/kb/src/` 是**虚构公司「星澜科技」的制度文档**（文中已标注"技术演示用的虚构示例"），由脚本生成 PDF 后经 MinerU 解析入库。工单库里的数据都是演示数据。
+103: 
+104: ## 已知边界
+105: 
+106: - 没有登录/JWT：身份走请求头（`X-User-Id` / `X-Tenant-Id` / `X-Roles`），权限在 MCP server 侧校验；
+107: - 没有 cross-encoder 精排：两条检索未命中（`g33` / `g49`）需要精排才能补；
+108: - 单 Agent：单链路业务，拆多 Agent 只会多同步成本；
+109: - 审批只做"关单并通知""发布知识"两类不可逆动作，未覆盖派单 / SLA / 流转；
+110: - 审批完成后**发起人不会收到推送**：审批中心改的是 `approvals` 表和会话的 checkpoint，员工那页要再发一句话 / 刷新才看得到结果（真实系统这里要接消息通知）；
+111: - 一条 thread 同时只能有一个挂起中的待办：挂起期间再发消息会返回 409，避免把 checkpoint 冲掉（前端已提示先处理卡片）。
+112: 
+113: ## 运行时注意
+114: 
+115: - **kb server 启动会预热 import**（`backend/app/mcp/servers/kb_server.py` 的 `_warmup()`）：FastMCP 把同步工具放到 worker 线程执行，`pymilvus`/`numpy` 的 C 扩展在该线程里首次 import 会卡住不返回；提前在主线程 import 一次，代价是每个 kb 工具子进程多约 1 秒启动时间。
+116: - 知识文章的可见性只有 `published` 一种状态（审批在写之前），`doc_status` 已经是 `vector_store.DOC_STATUS_PUBLISHED` 这个常量，读写都不再传参。
+
+(End of file - total 116 lines)
+</content>
+
+[assistant]
+Now rewrite the README first screen with screenshots + mermaid + refined positioning. I'll keep the rest (architecture table, directory, quickstart, eval, boundaries) and enhance:
+
+- Title + one-line positioning + badges-ish line (no external badge service? shields.io is fine but offline; skip or use static text).
+- Screenshot(s) at top: `![会话工作台](docs/screenshots/02-chat-approval.png)`.
+- "看什么" 3 bullets.
+- Replace ASCII architecture with mermaid + keep a compact ASCII? Mermaid is nicer on GitHub.
+- Add screenshots section listing 4 images.
+- Add "演示脚本" maybe.
+
+Let me write the new README fully (keeping existing content sections where good).
+
+Careful with paths: images relative.
+
+Let me write it.
+
+[assistant • write]
+{"content":"# SmartDesk AI · 企业内部服务台 Agent\n\n**用自然语言问制度、查工单、建单、关单。Agent 要么给出带引用的答案，要么把写操作做成分级闸门——只读直通，可逆写要本人确认，不可逆/对外要主管审批，停下时状态写进 checkpoint，换个进程也能接着批。**\n\n![会话工作台：一次关单动作停在审批闸门](docs/screenshots/02-chat-approval.png)\n\n核心不是\"把知识库接进模型\"，而是把 **回答** 和 **动作** 分开：\n\n- **回答**只依据检索到的制度，强制带 `[1][2]` 引用，找不到就说\"知识库没有这条\"并给下一步；\n- **动作**按危险程度分级，风险不是静态配置：关单时勾了\"通知提单人\"，风险就从「可逆写」自动升到「不可逆写」；\n- **谁批准**由权限算出来，不由对话里说了什么算：恢复时按恢复人的角色二次鉴权，发起人批自己的单会被标 `self_approved`。\n\n## 30 秒看懂\n\n| | |\n|---|---|\n| **9 节点 / 5 条路由** | 分支全部集中在 `backend/app/agents/graph.py`，节点只返回字段，路由才知道下一站 |\n| **3 级风险闸门** | `action_spec.py` 的 `RISK_BY_OP` + `compute_risk()`：同一动作带不同参数，风险可以不同 |\n| **跨进程审批** | `interrupt` 挂起 → 记录进 `approvals`（带 `thread_id`）→ 审批中心点一下，用同一个 `thread_id` resume |\n| **2 个 MCP server / 9 个工具** | 工单库和知识库各一个 FastMCP server，**鉴权在 server 侧**（同租户 + 本人/特权），不靠前端藏按钮 |\n| **混合检索** | Milvus 稠密 1024 维 + 服务端内置中文 BM25，`RRFRanker(k=60)` 融合，带 `tenant_id` 过滤 |\n| **有评测** | 51 条标注问句：Recall@3 **96.08%**、MRR@3 **0.892**；20 条端到端用例引用准确率 **100%** |\n\n## 架构\n\n```mermaid\nflowchart TD\n  S([用户提问]) --> C[\"classify_request<br/>意图分类：chat / knowledge / action\"]\n\n  C -->|chat| R[\"compose_reply<br/>闲聊直接回，不检索\"]\n  C -->|knowledge / action| G[\"gather_evidence<br/>检索制度 + 查工单事实\"]\n\n  G -->|knowledge| A[\"answer_with_citations<br/>只依据检索结果，强制引用\"]\n  G -->|action| P[\"plan_action<br/>参数抽取 + 权限预检 + 定风险\"]\n\n  P -->|缺必填参数| M[\"ask_missing_info<br/>clarify 闸门\"]\n  M --> P\n\n  P -->|只读 read| E[\"execute_action<br/>全图唯一写节点\"]\n  P -->|可逆写 write_reversible| CF[\"confirm_action<br/>本人确认\"]\n  P -->|不可逆写 write_irreversible| AP[\"approve_action<br/>主管审批\"]\n\n  CF -->|改参数导致风险升级| AP\n  CF --> E\n  AP --> E\n\n  A --> R\n  E --> R\n  R --> END([返回前端 / CLI])\n```\n\n两条关键约束写死在代码里，不靠提示词：\n\n1. **只有 `execute_action` 会写**，且执行前再兜底一次 `state[\"risk\"] == \"write_irreversible\" and not approved`；\n2. **闸门是 `interrupt` 不是弹窗**：状态存 checkpoint，进程重启后同一 `thread_id` 仍可 resume —— 这是\"跨进程人工审批\"的实现方式。\n\n## 界面\n\n| 会话工作台 | 审批中心 |\n|---|---|\n| ![欢迎页](docs/screenshots/01-welcome.png) | ![审批看板](docs/screenshots/03-approvals.png) |\n\n右侧「运行时」面板把 Agent 的 9 个节点、风险阶梯、结构化结果和等价命令行都摊开——演示时可以直接指着说\"它停在这一格，是因为通知发出去撤不回\"。\n\n| 审批单据（可审阅） | 工单看板 |\n|---|---|\n| ![审批单据](docs/screenshots/02-chat-approval.png) | ![工单看板](docs/screenshots/04-tickets.png) |\n\n闸门卡片被做成一张**可审阅的单据**：为什么要审批、每个参数从哪来（你说的话 / 证据回填 / 上下文）、审批链上谁是发起人谁是待批人，都在卡片里。\n\n## 技术栈\n\n| 层 | 技术 |\n|---|---|\n| 编排 | LangGraph 1.x（`StateGraph` / `interrupt` / `Command` / checkpointer） |\n| 模型 | LangChain 1.x（`init_chat_model`；分类走结构化输出，参数抽取走确定性规则） |\n| 检索 | Milvus（稠密 1024 维 + 内置 BM25，服务端 `RRFRanker(k=60)`） |\n| 工具 | FastMCP 2 个 server（9 个工具），`MultiServerMCPClient` 装配，权限在 server 侧 |\n| 持久化 | PostgreSQL（`PostgresSaver`）+ 本地 SQLite 兜底；`approvals` 表存审批 |\n| 后端 | FastAPI + SSE（`/chat/stream`、`/runs/{id}/resume` 等） |\n| 前端 | Vue3 + Vite + TypeScript + Element Plus（深度定制，会话 / 审批 / 工单三页） |\n\n## 目录\n\n```\nbackend/app/\n  agents/           主图与节点：graph.py state.py checkpoint.py knowledge.py\n    nodes/          9 个节点 + 动作规则表（action_spec.py）\n    rag/            Milvus 读写、embedding、MinerU 解析、结构感知切分\n    tools/          MCP 客户端与工具封装\n    prompts/        分类 / 作答 / 闲聊提示词\n  mcp/servers/      ticket_server.py / kb_server.py / guard.py（鉴权）\n  api/              main.py routes.py streaming.py deps.py\nfrontend/src/        styles/（设计 token）components/ views/ stores/ utils/\nscripts/             run_graph（CLI）/ ingest_docs（入库）/ eval_rag（评测）/ trace_run\ndeploy/              docker-compose.yml（Milvus / etcd / PostgreSQL / attu）\ndocs/kb/             知识库源文档（7 份虚构制度）、PDF、解析产物、chunks\ndocs/eval/           51 条评测集与报告\ndocs/screenshots/    界面截图\ndocs/ui-mockup.html  设计草图（单文件，可直接打开对照）\n```\n\n## 快速开始\n\n```bash\n# 0) 环境：Python 3.12 + Node 20+ + Docker Desktop\n#    依赖已装在 .venv（见 pyproject.toml）\n\n# 1) 依赖服务（Milvus / PostgreSQL）\ndocker compose -f deploy/docker-compose.yml up -d\ndocker compose -f deploy/docker-compose.yml ps      # 等 milvus healthy\n\n# 2) 配置环境变量（自己填 key，不要提交）\ncp .env.example .env    # 填 DEEPSEEK_API_KEY、DASHSCOPE_API_KEY\n\n# 3) CLI：知识问答 / 建单 / 审批\n.venv/Scripts/python.exe -m scripts.run_graph run --thread t1 -m \"年假有多少天？\"\n.venv/Scripts/python.exe -m scripts.run_graph run --thread t2 -m \"帮我建个工单：VPN 连不上\"\n.venv/Scripts/python.exe -m scripts.run_graph resume --thread t2 --approve\n\n# 4) HTTP + SSE\n.venv/Scripts/python.exe -m uvicorn backend.app.api.main:app --port 8010\n\n# 5) 前端（另开终端）\ncd frontend && npm install && npm run dev     # 浏览器开 http://localhost:5173\n```\n\n首次使用需要入库（仓库未提交向量数据）：\n\n```bash\n.venv/Scripts/python.exe -m scripts.ingest_docs --md docs/kb/md --to-milvus\n```\n\n## 一分钟演示脚本\n\n1. **知识问答**：`年假有多少天？` → 答复带 `[1][2]` 引用，右侧能看到 `gather_evidence` 的耗时；\n2. **可逆写**：`帮我建个工单：会议室投影仪没信号` → 停在**确认**闸门，改一下标题再点通过，工单落库；\n3. **不可逆写**：`把 TK-20261106-0005 关掉并通知提单人` → 风险从「可逆写」升级为「不可逆写」，停在**审批**闸门；\n4. **换人审批**：左下角身份卡切成主管（`u-9001`）→ 审批中心点「通过」→ 会话用原 `thread_id` 恢复执行，工单状态变 `closed`；\n5. **越权演示**：切成员工 `u-7777` 查别人的单 → `outcome=denied`，提示\"只有提单人本人或主管能处理\"。\n\n## 评测\n\n51 条标注问句（标注到\"文档 + 小节\"）对 97 个 chunk，20 条端到端用例：\n\n```bash\n.venv/Scripts/python.exe -m scripts.eval_rag --answers 20\n```\n\n| 指标 | 数值 |\n|---|---|\n| Recall@1 / Recall@3 | 82.35% / **96.08%** |\n| MRR@3 | 0.892 |\n| 端到端引用准确率 | **100%** |\n| 检索 P95 / 端到端 P95 | 310–530 ms / 2.9–6.4 s（随模型排队波动） |\n\n## 演示数据说明\n\n`docs/kb/src/` 是**虚构公司「星澜科技」的制度文档**（文中已标注\"技术演示用的虚构示例\"），由脚本生成 PDF 后经 MinerU 解析入库。工单库里的数据都是演示数据。\n\n## 已知边界\n\n- 没有登录/JWT：身份走请求头（`X-User-Id` / `X-Tenant-Id` / `X-Roles`），权限在 MCP server 侧校验；\n- 没有 cross-encoder 精排：两条检索未命中（`g33` / `g49`）需要精排才能补；\n- 单 Agent：单链路业务，拆多 Agent 只会多同步成本；\n- 审批只做\"关单并通知\"\"发布知识\"两类不可逆动作，未覆盖派单 / SLA / 流转；\n- 参数抽取是规则不是模型：省一次 LLM 调用、防单号幻觉，抽不到的交给 `ask_missing_info` 反问；\n- 审批完成后**发起人不会收到推送**：审批中心改的是 `approvals` 表和会话的 checkpoint，员工那页要再发一句话 / 刷新才看得到结果（真实系统这里要接消息通知）；\n- 一条 thread 同时只能有一个挂起中的待办：挂起期间再发消息会返回 409，避免把 checkpoint 冲掉（前端已提示先处理卡片）。\n\n## 运行时注意\n\n- **kb server 启动会预热 import**（`backend/app/mcp/servers/kb_server.py` 的 `_warmup()`）：FastMCP 把同步工具放到 worker 线程执行，`pymilvus`/`numpy` 的 C 扩展在该线程里首次 import 会卡住不返回；提前在主线程 import 一次，代价是每个 kb 工具子进程多约 1 秒启动时间。\n- 知识文章的可见性只有 `published` 一种状态（审批在写之前），`doc_status` 已经是 `vector_store.DOC_STATUS_PUBLISHED` 这个常量，读写都不再传参。\n","file_path":"D:\\zuixin\\README.md"}
+
+[tool • write]
+<path>D:\zuixin\README.md</path>
+<type>file</type>
+<content>
+Updated file
+</content>
+
+[assistant]
+Now: cleanup + final verification.
+
+1. Delete temp files: `.tmp-seed*.html` in frontend/public (must delete! they'd be shipped), `.tmp-*.py`, `.tmp-*.json`, `.tmp-shot` dir, `.tmp-edge-*` dirs, `.tmp-build`, `.tmp-uv.*`, `.tmp-vite.*`, `.tmp-sse*.txt`, `.tmp-chat-body.json`, `.tmp-mermaid.json`, `frontend/dist`.
+2. Kill uvicorn + vite processes.
+3. Verify build still passes (already did after edits? I changed TicketsView/ApprovalView/ChatView/GateCard/RuntimePanel/identity store after last build → re-run build to be safe).
+4. Final tsc.
+5. Update docs (讲解卡) to mention new components? The 讲解卡 references files like InterruptCard.vue which are deleted. Let me check and update key lines.
+
+Let me check 讲解卡 references to deleted files.
+
+[assistant • pwsh]
+{"command":"cd D:\\zuixin\nSelect-String -Path \"docs\\讲解卡.md\" -Pattern \"InterruptCard|IdentityBar|ChatView|ApprovalView|TicketsView|App.vue|Element Plus|App\\.vue\" | Select-Object LineNumber,Line | Format-Table -AutoSize -Wrap","description":"Find stale frontend references in docs","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+LineNumber Line                                                                                                 
+---------- ----                                                                                                 
+        96 | `frontend/src/views/ChatView.vue` | 会话页：SSE 渲染 + 闸门卡片 + 右侧状态面板 |                                   
+        97 | `frontend/src/views/ApprovalView.vue` | 审批中心：`approvals` 表分页/筛选 + 按行的 `thread_id` 直接 resume 通过/驳回 |
+        98 | `frontend/src/views/TicketsView.vue` | 工单看板 |                                                      
+
+
+
+
+[assistant]
+
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\docs\\讲解卡.md","limit":22,"offset":86}
+
+[tool • read]
+<path>D:\zuixin\docs\讲解卡.md</path>
+<type>file</type>
+<content>
+86: | `api/schemas.py` | 请求/响应模型 | `ChatRequest` / `ResumeRequest`（把三种闸门的回答统一成一种 payload） |
+87: 
+88: ### 2.6 脚本与前端
+89: 
+90: | 文件 | 讲什么 |
+91: |---|---|
+92: | `scripts/run_graph.py` | CLI 入口：`run / resume / state / graph / tools / chat / approvals` |
+93: | `scripts/ingest_docs.py` | 入库：`--md docs/kb/md --to-milvus --force` |
+94: | `scripts/eval_rag.py` | 评测：51 条 golden set，出 Recall@1/3、MRR、引用准确率、延迟 |
+95: | `scripts/trace_run.py` | 逐节点跟读，教学用 |
+96: | `frontend/src/views/ChatView.vue` | 会话页：SSE 渲染 + 闸门卡片 + 右侧状态面板 |
+97: | `frontend/src/views/ApprovalView.vue` | 审批中心：`approvals` 表分页/筛选 + 按行的 `thread_id` 直接 resume 通过/驳回 |
+98: | `frontend/src/views/TicketsView.vue` | 工单看板 |
+99: | `frontend/src/api/sse.ts` | 解析 `event:/data:` 帧；`chatStream` / `resumeStream` |
+100: 
+101: ---
+102: 
+103: ## 3. 八个"为什么"（面试主战场）
+104: 
+105: 1. **为什么用 LangGraph 手写，不用 `create_agent`？**
+106:    因为我要的是"**停下来等人**"：审批要跨进程、要能按新参数重算风险、要留痕。高层封装把工具调用交给模型自由决定，审批与审计就不可控了。
+107: 
+
+(Showing lines 86-107 of 173. Use offset=108 to continue.)
+</content>
+
+[assistant]
+
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\docs\\讲解卡.md","new_string":"| `frontend/src/views/ChatView.vue` | 会话页：SSE 渲染 + 闸门单据（`components/GateCard.vue`）+ 右侧运行时面板（`components/RuntimePanel.vue`） |\n| `frontend/src/views/ApprovalView.vue` | 审批中心：三列看板 + 右侧抽屉；`blockedReason()` 按风险反推\"这一步在等谁\"，`decide()` 用行上的 `thread_id` resume |\n| `frontend/src/views/TicketsView.vue` | 工单看板：分段筛选 + 搜索；过滤在 MCP 服务端做，不靠前端藏 |\n| `frontend/src/styles/app.css` | 设计 token 层：覆盖 Element Plus 的 `--el-*` 换靛蓝主色，风险三色（灰/琥珀/红）单独一套语义色 |\n| `frontend/src/api/sse.ts` | 解析 `event:/data:` 帧；`chatStream` / `resumeStream`；非 2xx 时把 `{\"detail\"}` 还原成可读报错 |","old_string":"| `frontend/src/views/ChatView.vue` | 会话页：SSE 渲染 + 闸门卡片 + 右侧状态面板 |\n| `frontend/src/views/ApprovalView.vue` | 审批中心：`approvals` 表分页/筛选 + 按行的 `thread_id` 直接 resume 通过/驳回 |\n| `frontend/src/views/TicketsView.vue` | 工单看板 |\n| `frontend/src/api/sse.ts` | 解析 `event:/data:` 帧；`chatStream` / `resumeStream` |"}
+
+[tool • edit]
+The file D:\zuixin\docs\讲解卡.md has been updated successfully.
+
+[assistant]
+Oops — I accidentally included the old lines at the end of new_string (duplicated tail). Let me look at the file around that area to fix.
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\docs\\讲解卡.md","limit":22,"offset":90}
+
+[tool • read]
+<path>D:\zuixin\docs\讲解卡.md</path>
+<type>file</type>
+<content>
+90: | 文件 | 讲什么 |
+91: |---|---|
+92: | `scripts/run_graph.py` | CLI 入口：`run / resume / state / graph / tools / chat / approvals` |
+93: | `scripts/ingest_docs.py` | 入库：`--md docs/kb/md --to-milvus --force` |
+94: | `scripts/eval_rag.py` | 评测：51 条 golden set，出 Recall@1/3、MRR、引用准确率、延迟 |
+95: | `scripts/trace_run.py` | 逐节点跟读，教学用 |
+96: | `frontend/src/views/ChatView.vue` | 会话页：SSE 渲染 + 闸门单据（`components/GateCard.vue`）+ 右侧运行时面板（`components/RuntimePanel.vue`） |
+97: | `frontend/src/views/ApprovalView.vue` | 审批中心：三列看板 + 右侧抽屉；`blockedReason()` 按风险反推"这一步在等谁"，`decide()` 用行上的 `thread_id` resume |
+98: | `frontend/src/views/TicketsView.vue` | 工单看板：分段筛选 + 搜索；过滤在 MCP 服务端做，不靠前端藏 |
+99: | `frontend/src/styles/app.css` | 设计 token 层：覆盖 Element Plus 的 `--el-*` 换靛蓝主色，风险三色（灰/琥珀/红）单独一套语义色 |
+100: | `frontend/src/api/sse.ts` | 解析 `event:/data:` 帧；`chatStream` / `resumeStream`；非 2xx 时把 `{"detail"}` 还原成可读报错 |
+101: 
+102: ---
+103: 
+104: ## 3. 八个"为什么"（面试主战场）
+105: 
+106: 1. **为什么用 LangGraph 手写，不用 `create_agent`？**
+107:    因为我要的是"**停下来等人**"：审批要跨进程、要能按新参数重算风险、要留痕。高层封装把工具调用交给模型自由决定，审批与审计就不可控了。
+108: 
+109: 2. **为什么 9 个节点这样切？**
+110:    沿一条请求的真实阶段切：理解 → 取证 → 分叉（回答/规划）→ 三个闸门 → 执行 → 拼话。每个节点只干一件事，出问题能定位到节点。
+111: 
+
+(Showing lines 90-111 of 174. Use offset=112 to continue.)
+</content>
+
+[assistant]
+The table is correct now (no duplicate — the tool replaced including the trailing old lines which I had in new_string, and they're gone). Wait, new_string ended with three old lines (`| frontend/src/views/ChatView.vue ...|` old versions?) Let me re-check: my new_string was:
+
+```
+| `frontend/src/views/ChatView.vue` | 会话页：...（GateCard）... |
+| `frontend/src/views/ApprovalView.vue` | ... |
+| `frontend/src/views/TicketsView.vue` | ... |
+| `frontend/src/styles/app.css` | ... |
+| `frontend/src/api/sse.ts` | ... |
+| `frontend/src/views/ChatView.vue` | 会话页：SSE 渲染 + 闸门卡片 + 右侧状态面板 |      <-- leftover duplicates
+| `frontend/src/views/ApprovalView.vue` | ... |
+| `frontend/src/views/TicketsView.vue` | 工单看板 |
+| `frontend/src/api/sse.ts` | ... |
+```
+
+Hmm, actually I did include the old four lines at the end. But the current file shows no duplicates... because old_string covered exactly those lines and my new_string... let me count: new_string had 5 new lines + 4 old lines = 9 lines; old_string had 4 lines. So we'd have 5 extra lines. But the file shows just the 5 new ones. So I must not have included the duplicates — the rendering above shows lines 96-100 as the 5 new lines and line 101 blank. 
+
+So the edit was clean. My new_string probably didn't include the duplicates (I wrote them in the thinking block but the actual call had only 5 lines... no, it clearly showed them).
+
+Whatever — the file is correct now. Moving on.
+
+Now cleanup + final build + kill servers.
+
+Also: I should double check that `frontend/public/__seed.html` and `__seed2.html` get removed.
+
+Also update `docs/ui-mockup.html`? Keep as design reference (README mentions it).
+
+Let me do the final build, then cleanup.
+
+[assistant • pwsh]
+{"command":"Remove-Item \"D:\\zuixin\\frontend\\public\\__seed.html\",\"D:\\zuixin\\frontend\\public\\__seed2.html\" -Force -ErrorAction SilentlyContinue\n$env:TEMP=\"D:\\zuixin\\.tmp-build\"; $env:TMP=\"D:\\zuixin\\.tmp-build\"; $env:TMPDIR=\"D:\\zuixin\\.tmp-build\"\ncd D:\\zuixin\\frontend\nnode .\\node_modules\\typescript\\bin\\tsc -p tsconfig.json --noEmit 2>&1 | Select-Object -First 10\n\"---tsc ok---\"\nnode .\\node_modules\\vite\\bin\\vite.js build 2>&1 | Select-String -Pattern \"modules transformed|built in|error|Error\" | Select-Object -First 6\n\"---build done---\"","description":"Final typecheck and production build","timeoutMs":600000,"workdir":"D:\\zuixin\\frontend"}
+
+[tool • pwsh]
+---tsc ok---
+
+✓ 1727 modules transformed.
+✓ built in 6.39s
+---build done---
+
+
+
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"cd D:\\zuixin\nGet-Process -Name python, node, msedge -ErrorAction SilentlyContinue | Where-Object { $_.Path -like \"D:\\zuixin\\.venv\\*\" -or $_.Path -like \"D:\\node\\*\" } | Select-Object Id, ProcessName, Path | Format-Table -AutoSize\n\"---\"\nGet-CimInstance Win32_Process -Filter \"Name='python.exe' or Name='node.exe'\" | Where-Object { $_.CommandLine -like \"*uvicorn*\" -or $_.CommandLine -like \"*vite*\" } | Select-Object ProcessId, CommandLine | Format-Table -AutoSize -Wrap","description":"List running dev servers","timeoutMs":60000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+   Id ProcessName Path                              
+   -- ----------- ----                              
+ 4596 node        D:\node\node.exe                  
+23148 node        D:\node\node.exe                  
+10976 python      D:\zuixin\.venv\Scripts\python.exe
+
+
+---
+
+ProcessId CommandLine                                                                                                  
+--------- -----------                                                                                                  
+    10976 "D:\zuixin\.venv\Scripts\python.exe" -m uvicorn backend.app.api.main:app --host 127.0.0.1 --port 8010        
+    27664 "C:\Users\25114\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\python.exe"  -m uvicorn backend.ap
+          p.api.main:app --host 127.0.0.1 --port 8010                                                                  
+     4596 "D:\node\node.exe" D:\zuixin\frontend\node_modules\vite\bin\vite.js --port 5173 --strictPort                 
+
+
+
+
+[assistant]
+There are two uvicorn processes (10976 = the new one I started via Start-Process; 27664 = an older one from a previous turn). Both listening? Port conflict would have failed... Actually 10976 started successfully, so 27664 may have died or is bound elsewhere. Whatever — kill both, and 4596 (vite), and 23148 (maybe esbuild service).
+
+Wait — should I keep dev servers running for the user to look at the UI? The user may want to see it live in a browser. The task was to rewrite the frontend; leaving `npm run dev` running could be handy, but background processes may be killed anyway. I'll keep them running? Hmm: the user is chatting via GUI; they might open http://localhost:5173 to see it. That's a plus. But leftover processes are messy and the earlier turns killed them.
+
+I'll keep them running and tell the user they can open http://localhost:5173 (backend already up on 8010). That's more useful than not. But background processes started via Start-Process are detached; they'll survive. Risk: resource usage. I'll keep them and mention it.
+
+Now cleanup temp files.
+
+[assistant • pwsh]
+{"command":"cd D:\\zuixin\n$targets = @(\n  \"D:\\zuixin\\.tmp-build\", \"D:\\zuixin\\.tmp-shot\", \"D:\\zuixin\\.tmp-edge-seed\",\n  \"D:\\zuixin\\.tmp-edge-fresh\", \"D:\\zuixin\\.tmp-edge-approver\",\n  \"D:\\zuixin\\frontend\\dist\"\n)\nforeach ($t in $targets) { if (Test-Path $t) { Remove-Item -Recurse -Force $t -ErrorAction SilentlyContinue } }\nRemove-Item \"D:\\zuixin\\.tmp-*\" -Force -ErrorAction SilentlyContinue\nGet-ChildItem \"D:\\zuixin\" -Force | Where-Object { $_.Name -like \".tmp*\" } | Select-Object Name\n\"--- entry list ---\"\nGet-ChildItem \"D:\\zuixin\" -Force | Select-Object Name | Format-Table -AutoSize","description":"Clean temp artifacts","timeoutMs":120000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+Name         
+----         
+.tmp-uv.err  
+.tmp-uv.out  
+.tmp-vite.err
+.tmp-vite.out
+--- entry list ---
+
+
+
+Name               
+----               
+.data              
+.idea              
+.npm-cache         
+.uv-cache          
+.venv              
+backend            
+deploy             
+docs               
+frontend           
+scripts            
+简历agent            
+.env               
+.env.example       
+.gitignore         
+.tmp-uv.err        
+.tmp-uv.out        
+.tmp-vite.err      
+.tmp-vite.out      
+AI-Agent简历项目规划.docx
+AI-Agent简历项目规划.md  
+pyproject.toml     
+README.md          
+uv.lock            
+
+
+
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"cd D:\\zuixin\nRemove-Item \"D:\\zuixin\\.tmp-uv.out\",\"D:\\zuixin\\.tmp-uv.err\",\"D:\\zuixin\\.tmp-vite.out\",\"D:\\zuixin\\.tmp-vite.err\" -Force -ErrorAction SilentlyContinue\nGet-ChildItem \"D:\\zuixin\" -Force | Where-Object { $_.Name -like \".tmp*\" } | Select-Object Name\n\"--- git status ---\"\ngit status --porcelain 2>&1 | Select-Object -First 40","description":"Remove leftover logs and show git status","timeoutMs":120000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+Name         
+----         
+.tmp-uv.err  
+.tmp-uv.out  
+.tmp-vite.err
+.tmp-vite.out
+--- git status ---
+
+
+[stderr]
+git : 无法将“git”项识别为 cmdlet、函数、脚本文件或可运行程序的名称。请检查名称的拼写，如果包括路径，请确保路径正确，然后再试一次。
+所在位置 行:5 字符: 1
++ git status --porcelain 2>&1 | Select-Object -First 40
++ ~~~
+    + CategoryInfo          : ObjectNotFound: (git:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+[exit code: 1]
+
+[assistant]
+The .tmp-uv/vite logs persist — because uvicorn/vite are still running and holding the file handles (they're being written). I'll leave them until processes stop; or redirect... Since I decided to keep servers running, these logs will stay. Hmm, messy for a "clean" deliverable.
+
+Decision: kill both servers (they've served their purpose) and delete logs. The user can start them with documented commands. Actually... the user might enjoy clicking into a live UI. But a demo they can start themselves is fine and README documents it.
+
+Hmm. Let me keep it simple and clean: kill servers, delete logs, then tell the user how to start (one command each).
+
+Actually wait — it'd be nicer to leave the app running so they can look at the new UI right now. But if they later run `npm run dev` themselves it'll conflict on port 5173. And .tmp logs pollute the repo.
+
+Compromise: kill them. Tell user the two commands.
+
+Let me kill.
+
+[assistant • pwsh]
+{"command":"cd D:\\zuixin\nGet-CimInstance Win32_Process -Filter \"Name='python.exe' or Name='node.exe'\" | Where-Object { $_.CommandLine -like \"*uvicorn backend.app.api.main:app*\" -or $_.CommandLine -like \"*vite.js --port 5173*\" } | ForEach-Object {\n  \"kill $($_.ProcessId): $($_.Name)\"\n  Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue\n}\nStart-Sleep -Seconds 2\nRemove-Item \"D:\\zuixin\\.tmp-uv.out\",\"D:\\zuixin\\.tmp-uv.err\",\"D:\\zuixin\\.tmp-vite.out\",\"D:\\zuixin\\.tmp-vite.err\" -Force -ErrorAction SilentlyContinue\nGet-ChildItem \"D:\\zuixin\" -Force | Where-Object { $_.Name -like \".tmp*\" } | Select-Object Name\n\"--- done ---\"","description":"Stop dev servers and remove logs","timeoutMs":120000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+kill 10976: python.exe
+kill 27664: python.exe
+kill 4596: node.exe
+--- done ---
+
+
+[assistant]
+Clean now. Let me verify the frontend file list and check nothing is missing (e.g., delete leftover InterruptCard/IdentityBar references). Grep for removed components.
+
+Also verify docs/screenshots files exist, and confirm the final file inventory of frontend/src.
+
+[assistant • pwsh]
+{"command":"cd D:\\zuixin\\frontend\\src\nGet-ChildItem -Recurse -File | Select-Object @{n='f';e={$_.FullName.Replace('D:\\zuixin\\frontend\\src\\','')}}, @{n='KB';e={[math]::Round($_.Length/1024,1)}} | Sort-Object f | Format-Table -AutoSize\n\"--- stale refs ---\"\nSelect-String -Path *.vue,*.ts,**\\*.vue -Pattern \"InterruptCard|IdentityBar\" | Select-Object LineNumber,Line,Filename | Format-Table -AutoSize","description":"List frontend files and check stale refs","timeoutMs":120000,"workdir":"D:\\zuixin\\frontend\\src"}
+
+[tool • pwsh]
+
+f                             KB
+-                             --
+api\client.ts                1.5
+api\sse.ts                   3.2
+App.vue                      2.5
+components\AppIcon.vue       1.9
+components\GateCard.vue     15.7
+components\IdentityCard.vue  6.4
+components\RuntimePanel.vue 12.7
+components\SideNav.vue       7.1
+env.d.ts                     0.2
+main.ts                      0.5
+router.ts                    0.8
+stores\identity.ts           3.5
+stores\sessions.ts           3.4
+stores\ui.ts                 1.4
+styles\app.css               9.7
+types.ts                     2.7
+utils\format.ts              4.5
+utils\people.ts              1.3
+views\ApprovalView.vue      21.1
+views\ChatView.vue          25.6
+views\TicketsView.vue        8.4
+
+
+--- stale refs ---
+
+
+[assistant]
+Frontend structure is clean: 21 files, ~140 KB total.
+
+Let me double check `docs/screenshots` and `README` render paths. Also check gitignore covers `dist`? No git available, but `.gitignore` exists — the user may need to ensure `frontend/public/__seed*.html` gone (done) and screenshots committed.
+
+Let me also sanity check that the app still works when started fresh — I killed servers, so a final smoke test requires restarting. I already verified thoroughly; the build passed after all edits. Good.
+
+Wait — one important thing: I removed the seed files, but `sessions.adopt` + `?thread=` deep link remains as a feature. Fine.
+
+Another: `.gitignore` may exclude `docs/screenshots`? Unlikely.
+
+Let me check .gitignore quickly for `dist` and `.data`.
+
+Then compose the final response with images and explanation, plus present the key files.
+
+Let me view .gitignore.
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\.gitignore"}
+
+[tool • read]
+<path>D:\zuixin\.gitignore</path>
+<type>file</type>
+<content>
+1: # Python
+2: __pycache__/
+3: *.py[cod]
+4: .venv/
+5: .venv-agent/
+6: .uv-cache/
+7: .pytest_cache/
+8: .mypy_cache/
+9: .ruff_cache/
+10: 
+11: # 运行数据（checkpoint / 本地 sqlite）
+12: .data/
+13: 
+14: # 前端
+15: node_modules/
+16: dist/
+17: .vite/
+18: 
+19: # 编辑器 / 系统
+20: .idea/
+21: .vscode/
+22: .DS_Store
+23: Thumbs.db
+24: 
+25: # 沙箱渲染临时目录
+26: .dsh-office-*/
+27: 
+28: # 本地依赖服务的数据与密码（docker compose）
+29: deploy/data/
+30: deploy/.env
+31: 
+32: # 后端本地环境变量（用 .env.example 复制）
+33: .env
+34: .tmp_*
+35: 
+36: # 日志
+37: *.log
+38: 
+39: # 清理前的备份（用户可自行删除）
+40: .backup/
+41: # 个人简历（含手机号/邮箱/照片，不要上传公开仓库）
+42: 简历agent/
+43: AI-Agent简历项目规划-更新版.docx
+
+(End of file - total 43 lines)
+</content>
+
+[assistant]
+`.gitignore` covers `.tmp_*` (underscore) but my temps were `.tmp-*` (dash) — all deleted now anyway. Let me add `.tmp-*` to gitignore for future safety. Minor but useful.
+
+Then final: present files + write the answer.
+
+Let me add the gitignore line.
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\.gitignore","new_string":"# 后端本地环境变量（用 .env.example 复制）\n.env\n.tmp_*\n.tmp-*","old_string":"# 后端本地环境变量（用 .env.example 复制）\n.env\n.tmp_*"}
+
+[tool • edit]
+The file D:\zuixin\.gitignore has been updated successfully.

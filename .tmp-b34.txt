@@ -1,0 +1,772 @@
+[assistant]
+Now wire the deep links in ChatView and ApprovalView.
+
+Let me read the relevant parts of ChatView to add route query handling.
+
+[assistant • pwsh]
+{"command":"Select-String -Path \"D:\\zuixin\\frontend\\src\\views\\ChatView.vue\" -Pattern \"onMounted|useRoute|loadThread|sessions\\.|watch\\(\" | Select-Object LineNumber,Line | Format-Table -AutoSize -Wrap","description":"Find lifecycle hooks in ChatView","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+LineNumber Line                                                                            
+---------- ----                                                                            
+        11 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+        12 import { useRouter } from 'vue-router'                                          
+        31 const router = useRouter()                                                      
+        59 const threadId = computed(() => detail.value?.thread_id || sessions.current)    
+       195   const thread = sessions.ensure()                                              
+       201   sessions.titleFrom(thread, content)                                           
+       202   sessions.update(thread, { state: 'running' })                                 
+       219   const thread = sessions.current                                               
+       223   sessions.update(thread, { state: 'running' })                                 
+       259   sessions.update(thread, { state: interrupt.value ? 'paused' : 'done' })       
+       266   const id = thread || sessions.current                                         
+       272     if (data.paused) sessions.update(id, { state: 'paused' })                   
+       278 async function loadThread(thread: string) {                                     
+       284     sessions.start()                                                            
+       301   sessions.start()                                                              
+       302   void loadThread(sessions.current)                                             
+       323 watch(                                                                          
+       324   () => sessions.current,                                                       
+       326     if (!running.value) void loadThread(thread)                                 
+       330 onMounted(() => {                                                               
+       331   const thread = sessions.ensure()                                              
+       332   void loadThread(thread)                                                       
+
+
+
+
+[assistant]
+
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\frontend\\src\\views\\ChatView.vue","offset":276,"limit":62}
+
+[tool • read]
+<path>D:\zuixin\frontend\src\views\ChatView.vue</path>
+<type>file</type>
+<content>
+276: }
+277: 
+278: async function loadThread(thread: string) {
+279:   items.value = []
+280:   cleanup()
+281:   detail.value = null
+282:   elapsedMs.value = null
+283:   if (!thread) {
+284:     sessions.start()
+285:     return
+286:   }
+287:   await refreshDetail(thread)
+288:   if (interrupt.value) {
+289:     items.value.push({
+290:       role: 'assistant',
+291:       text: '这条会话还停在闸门上（从服务端 checkpoint 恢复的），下面是待你处理的卡片。',
+292:       citations: [],
+293:       nodes: [],
+294:     })
+295:   }
+296:   await scrollDown()
+297: }
+298: 
+299: function newSession() {
+300:   stop()
+301:   sessions.start()
+302:   void loadThread(sessions.current)
+303:   inputRef.value?.focus()
+304: }
+305: 
+306: function stop() {
+307:   controller?.abort()
+308:   controller = null
+309:   running.value = false
+310: }
+311: 
+312: function useExample(text: string) {
+313:   draft.value = text
+314:   inputRef.value?.focus()
+315: }
+316: 
+317: function onKeydown(event: KeyboardEvent) {
+318:   if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
+319:   event.preventDefault()
+320:   void send()
+321: }
+322: 
+323: watch(
+324:   () => sessions.current,
+325:   (thread) => {
+326:     if (!running.value) void loadThread(thread)
+327:   },
+328: )
+329: 
+330: onMounted(() => {
+331:   const thread = sessions.ensure()
+332:   void loadThread(thread)
+333: })
+334: 
+335: onBeforeUnmount(() => {
+336:   stop()
+337: })
+
+(Showing lines 276-337 of 911. Use offset=338 to continue.)
+</content>
+
+[assistant]
+
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\frontend\\src\\views\\ChatView.vue","new_string":"onMounted(() => {\n  // ?thread=xxx 是\"别人发给我的一条会话\"：本地没有就补进列表，再按服务端 checkpoint 恢复\n  const linked = typeof route.query.thread === 'string' ? route.query.thread.trim() : ''\n  if (linked) sessions.adopt(linked)\n  const thread = linked || sessions.ensure()\n  void loadThread(thread)\n})","old_string":"onMounted(() => {\n  const thread = sessions.ensure()\n  void loadThread(thread)\n})"}
+
+[tool • edit]
+The file D:\zuixin\frontend\src\views\ChatView.vue has been updated successfully.
+
+[assistant]
+
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\frontend\\src\\views\\ChatView.vue","new_string":"import { useRoute, useRouter } from 'vue-router'","old_string":"import { useRouter } from 'vue-router'"}
+
+[tool • edit]
+The file D:\zuixin\frontend\src\views\ChatView.vue has been updated successfully.
+
+[assistant]
+
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\frontend\\src\\views\\ChatView.vue","new_string":"const router = useRouter()\nconst route = useRoute()","old_string":"const router = useRouter()"}
+
+[tool • edit]
+The file D:\zuixin\frontend\src\views\ChatView.vue has been updated successfully.
+
+[assistant]
+Now ApprovalView `?open=`. Let me look at its structure: `active` ref probably holds selected row.
+
+[assistant • pwsh]
+{"command":"Select-String -Path \"D:\\zuixin\\frontend\\src\\views\\ApprovalView.vue\" -Pattern \"onMounted|const active|async function load|import \\{|useRouter|useRoute\" | Select-Object LineNumber,Line | Format-Table -AutoSize -Wrap","description":"Inspect ApprovalView structure","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+LineNumber Line                                                                                              
+---------- ----                                                                                              
+        13 import { computed, onMounted, ref } from 'vue'                                                    
+        14 import { ElMessage } from 'element-plus'                                                          
+        17 import { api } from '@/api/client'                                                                
+        18 import { resumeStream } from '@/api/sse'                                                          
+        19 import { useIdentity } from '@/stores/identity'                                                   
+        20 import { useUi } from '@/stores/ui'                                                               
+        21 import { clock, durationText, gateText, opLabel, relTime, riskMeta, toDate } from '@/utils/format'
+        22 import { displayName } from '@/utils/people'                                                      
+        32 const active = ref<ApprovalRow | null>(null)                                                      
+        57 async function load() {                                                                           
+       127 onMounted(load)                                                                                   
+
+
+
+
+[assistant]
+
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\frontend\\src\\views\\ApprovalView.vue","limit":28,"offset":55}
+
+[tool • read]
+<path>D:\zuixin\frontend\src\views\ApprovalView.vue</path>
+<type>file</type>
+<content>
+55: })
+56: 
+57: async function load() {
+58:   loading.value = true
+59:   try {
+60:     const data = await api.approvals('', 100)
+61:     rows.value = data.approvals ?? []
+62:     ui.setPending(pending.value.length)
+63:   } catch (err) {
+64:     message.value = err instanceof Error ? err.message : String(err)
+65:   } finally {
+66:     loading.value = false
+67:   }
+68: }
+69: 
+70: /**
+71:  * 按风险反推"这一步在等谁"，和 backend 的 GATE_BY_RISK 对齐：
+72:  * 不可逆写 → 等 approver；可逆写 → 等提单人本人。前端提前拦，省一次 403 请求。
+73:  */
+74: function blockedReason(row: ApprovalRow): string {
+75:   if (row.status !== 'pending') return '这条已经处理过了'
+76:   if (!row.thread_id) return '缺 thread_id —— 命令行直连产生的记录，网页端无法恢复那条会话'
+77:   if (row.risk === 'write_irreversible') {
+78:     if (!identity.isApprover) return '当前身份没有 approver 角色，无法批准不可逆写'
+79:     if (row.requester === identity.userId) return '发起人不能批准自己的单，切成主管身份再来'
+80:     return ''
+81:   }
+82:   if (row.requester !== identity.userId) return '这一步只等提单人本人确认，别人点会被后端拒绝'
+
+(Showing lines 55-82 of 682. Use offset=83 to continue.)
+</content>
+
+[assistant]
+
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\frontend\\src\\views\\ApprovalView.vue","new_string":"async function load() {\n  loading.value = true\n  try {\n    const data = await api.approvals('', 100)\n    rows.value = data.approvals ?? []\n    ui.setPending(pending.value.length)\n    // ?open=<id> 是\"把这一条审批的链接发给主管\"：加载完直接把抽屉拉到那条\n    const wanted = typeof route.query.open === 'string' ? route.query.open : ''\n    if (wanted) {\n      const hit = rows.value.find((row) => String(row.id) === wanted)\n      if (hit) active.value = hit\n    }\n  } catch (err) {\n    message.value = err instanceof Error ? err.message : String(err)\n  } finally {\n    loading.value = false\n  }\n}","old_string":"async function load() {\n  loading.value = true\n  try {\n    const data = await api.approvals('', 100)\n    rows.value = data.approvals ?? []\n    ui.setPending(pending.value.length)\n  } catch (err) {\n    message.value = err instanceof Error ? err.message : String(err)\n  } finally {\n    loading.value = false\n  }\n}"}
+
+[tool • edit]
+The file D:\zuixin\frontend\src\views\ApprovalView.vue has been updated successfully.
+
+[assistant]
+
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\frontend\\src\\views\\ApprovalView.vue","new_string":"import { ElMessage } from 'element-plus'\nimport { useRoute } from 'vue-router'","old_string":"import { ElMessage } from 'element-plus'"}
+
+[tool • edit]
+The file D:\zuixin\frontend\src\views\ApprovalView.vue has been updated successfully.
+
+[assistant]
+
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\frontend\\src\\views\\ApprovalView.vue","new_string":"const active = ref<ApprovalRow | null>(null)\nconst route = useRoute()","old_string":"const active = ref<ApprovalRow | null>(null)"}
+
+[tool • edit]
+The file D:\zuixin\frontend\src\views\ApprovalView.vue has been updated successfully.
+
+[assistant]
+Now I need real data to screenshot. Let me create a paused thread via curl (chat/stream with employee identity asking to close a ticket with notify) → the SSE will emit an interrupt and pause.
+
+But wait: for the screenshot to look good, the conversation needs some messages. When loading a paused thread from checkpoint, my ChatView only shows the placeholder + gate card. Acceptable but not ideal.
+
+Better: drive the browser? Can't easily.
+
+Alternative: temporarily allow seeding messages? No.
+
+Hmm, actually: when the thread is paused and ChatView loads with `?thread=`, we show one assistant bubble + the gate card + runtime panel with detail.next = 'approve_action'. That's a legit "just opened a session link" state. Good enough, and honest.
+
+Actually even better: use `api.run(thread)` — RunDetail includes `query` (the user's message). I could render the original query as a user bubble on restore. That's realistic: "恢复会话时把用户当时说的话也显示出来". Let me check RunDetail has `query`. Yes: `RunDetail{thread_id,next,paused,interrupt,outcome,intent,gate,risk,query,reply,citations,...}`.
+
+So in loadThread, if detail.query → push user bubble first. Then if interrupt → push assistant placeholder. That makes restored sessions look complete. Let me add that.
+
+Let me check current loadThread code again (lines 278-297).
+
+Add before interrupt push:
+```ts
+if (detail.value?.query) items.value.push({ role: 'user', text: detail.value.query, citations: [], nodes: [] })
+if (detail.value?.reply) items.value.push({ role: 'assistant', text: detail.value.reply, citations: detail.value.citations ?? [], nodes: [] })
+```
+Wait careful: `detail` is set by refreshDetail. Let me restructure: after `await refreshDetail(thread)`, if `detail.value?.query` push user item; if interrupt → push assistant placeholder; else if reply → push assistant reply.
+
+Let me implement.
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\frontend\\src\\views\\ChatView.vue","new_string":"  await refreshDetail(thread)\n  // 从 checkpoint 恢复的会话：把它当时说的话和已经产出的回复也放回气泡里，\n  // 否则打开一条会话链接只看到一张卡片，看不出上下文。\n  if (detail.value?.query) {\n    items.value.push({ role: 'user', text: detail.value.query, citations: [], nodes: [] })\n  }\n  if (interrupt.value) {\n    items.value.push({\n      role: 'assistant',\n      text: '这条会话还停在闸门上（从服务端 checkpoint 恢复的），下面是待你处理的卡片。',\n      citations: [],\n      nodes: [],\n    })\n  } else if (detail.value?.reply) {\n    items.value.push({\n      role: 'assistant',\n      text: detail.value.reply,\n      citations: detail.value.citations ?? [],\n      nodes: [],\n    })\n  }\n  await scrollDown()","old_string":"  await refreshDetail(thread)\n  if (interrupt.value) {\n    items.value.push({\n      role: 'assistant',\n      text: '这条会话还停在闸门上（从服务端 checkpoint 恢复的），下面是待你处理的卡片。',\n      citations: [],\n      nodes: [],\n    })\n  }\n  await scrollDown()"}
+
+[tool • edit]
+The file D:\zuixin\frontend\src\views\ChatView.vue has been updated successfully.
+
+[assistant]
+Now: build again (to catch syntax) — or just rely on dev server HMR + tsc. Let me run tsc quickly, then create the paused thread via curl, then screenshot.
+
+Creating a paused thread: POST /api/v1/chat/stream with body {message, thread_id}? Let me check ChatRequest fields. From memory: `ChatRequest{message, thread_id}`. Let me grep.
+
+[assistant • pwsh]
+{"command":"Select-String -Path \"D:\\zuixin\\backend\\app\\api\\routes.py\" -Pattern \"class ChatRequest\" -Context 0,8 | ForEach-Object { $_.Line; $_.Context.PostContext }","description":"Show ChatRequest model","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+(no output)
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"Select-String -Path \"D:\\zuixin\\backend\\app\\api\\*.py\" -Pattern \"ChatRequest|thread_id\" | Select-Object -First 20 LineNumber,Line,Path | Format-Table -AutoSize -Wrap","description":"Grep ChatRequest definition","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+LineNumber Line                                                                                         Path           
+---------- ----                                                                                         ----           
+        20 from .schemas import ChatRequest, ResumeRequest                                              D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+        48     body: ChatRequest, context: UserContext = Depends(get_context)                           D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+        52     config = {"configurable": {"thread_id": body.thread_id}}                                 D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+        62                 f"会话 {body.thread_id} 正在等待"                                                  D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+        64                 "请先处理挂起的卡片，或换一个 thread_id 新开会话。"                                             D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+        71         thread_id=body.thread_id,                                                            D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+        79         thread_id=body.thread_id,                                                            D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+        85 @router.post("/runs/{thread_id}/resume", summary="从暂停点继续（确认 / 审批 / 补参数）")                    D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+        87     thread_id: str,                                                                          D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+        91     """跨进程恢复的关键：只靠 `thread_id` 找回 checkpoint，不需要把 State 传回来。                                 D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+        94     所以员工自己点通过只会继续挂起，主管用同一个 thread_id 来 resume 才生效。                                           D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+        97     config = {"configurable": {"thread_id": thread_id}}                                      D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+       101         raise HTTPException(status_code=404, detail=f"没有这个会话：{thread_id}")                   D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+       113         thread_id=thread_id,                                                                 D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+       119 @router.get("/runs/{thread_id}", summary="会话当前快照（停在哪、状态、草稿卡片）")                              D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+       120 def read_run(thread_id: str, context: UserContext = Depends(get_context)) -> dict[str, Any]: D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+       123     config = {"configurable": {"thread_id": thread_id}}                                      D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+       126         raise HTTPException(status_code=404, detail=f"没有这个会话：{thread_id}")                   D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+       135         "thread_id": thread_id,                                                              D:\zuixin\backe
+                                                                                                        nd\app\api\rout
+                                                                                                        es.py          
+        14 class ChatRequest(BaseModel):                                                                D:\zuixin\backe
+                                                                                                        nd\app\api\sche
+                                                                                                        mas.py         
+
+
+
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$body = '{\"message\":\"把 TK-20261106-0005 关掉，并通知提单人处理完了\",\"thread_id\":\"demo-approve-01\"}'\ncurl.exe -s -N -X POST \"http://127.0.0.1:8010/api/v1/chat/stream\" -H \"Content-Type: application/json\" -H \"X-User-Id: u-1001\" -H \"X-Tenant-Id: tenant-demo\" -H \"X-Roles: employee\" -d $body --max-time 120 | Select-Object -Last 12","description":"Create a paused approval thread via SSE","timeoutMs":180000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+{"detail":[{"type":"json_invalid","loc":["body",1],"msg":"JSON decode error","input":{},"ctx":{"error":"Expecting property name enclosed in double quotes"}}]}
+
+
+[assistant]
+PowerShell quoting mangled the JSON. Use a temp file for the body with `--data-binary @file`. Write the JSON via the write tool to avoid quoting issues.
+
+Note: write tool writes UTF-8 — good.
+
+[assistant • write]
+{"file_path":"D:\\zuixin\\.tmp-chat-body.json","content":"{\"message\":\"把 TK-20261106-0005 关掉，并通知提单人处理完了\",\"thread_id\":\"demo-approve-01\"}\n"}
+
+[tool • write]
+<path>D:\zuixin\.tmp-chat-body.json</path>
+<type>file</type>
+<content>
+Created file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"curl.exe -s -N -X POST \"http://127.0.0.1:8010/api/v1/chat/stream\" -H \"Content-Type: application/json\" -H \"X-User-Id: u-1001\" -H \"X-Tenant-Id: tenant-demo\" -H \"X-Roles: employee\" --data-binary \"@D:\\zuixin\\.tmp-chat-body.json\" --max-time 150 > \"D:\\zuixin\\.tmp-sse.txt\" 2>&1\nGet-Content \"D:\\zuixin\\.tmp-sse.txt\" -Tail 8","description":"Run SSE chat to create paused approval","timeoutMs":240000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+data: {"node": "gather_evidence", "ms": 4115, "evidence_count": 3, "facts_count": 1}
+
+event: node
+data: {"node": "plan_action", "ms": 2, "risk": "write_reversible", "gate": "confirm"}
+
+event: interrupt
+data: {"thread_id": "demo-approve-01", "next": ["confirm_action"], "payloads": [{"type": "confirm", "title": "关工单：TK-20261106-0005", "fields": [{"name": "ticket_no", "label": "工单号", "value": "TK-20261106-0005", "source": "from_user", "editable": true}, {"name": "resolution", "label": "解决说明", "value": "并通知提单人处理完了", "source": "from_user", "editable": true}, {"name": "notify_reporter", "label": "通知提单人", "value": false, "source": "from_context", "editable": true}], "citations": ["[1] 星澜科技 IT 服务级别与工单处理规范 · 第 4 章 工单生命周期 · 4.2 催办与自动关闭", "[2] 星澜科技 IT 服务级别与工单处理规范 · 第 4 章 工单生命周期 · 4.1 状态流转", "[3] 星澜科技 客户订单退款与售后规则 · 第 6 章 售后与争议处理 · 6.1 售后响应"], "risk": "write_reversible", "hint": "确认后才会真正写入系统；发现填错了可以直接改字段。"}], "elapsed_ms": 11061, "tokens": {"in": 913, "out": 71}}
+
+
+
+[user]
+<acp tokens="63" type="text" time="2026-11-06 21:10:29">m01773</acp>
+Time sampled while preparing turn 22, step 91: 2026-11-06T21:10:29+08:00[Asia/Shanghai]
+Browser time zone for this request: Asia/Shanghai. Interpret otherwise-unqualified dates and times in this zone.
+Elapsed since the preceding step context: 10m 1s.
+
+[assistant]
+The paused thread is at the *confirm* gate, not approve — because `notify_reporter` was parsed as false (the phrase "通知提单人处理完了" — the regex didn't match notify). So risk stayed write_reversible → confirm gate.
+
+For the screenshot I want the approve gate (irreversible) — that's the money shot. Let me craft a message that triggers notify_reporter=true. From earlier CLI test: "…关掉 TK-20261106-0006，并通知提单人" worked and escalated. The regex probably looks for "通知提单人" at the end. My message had "并通知提单人处理完了" — maybe the regex matched but resolution text... it says notify_reporter value false.
+
+Let me try a message exactly like: "关掉 TK-20261106-0005 并通知提单人" with thread demo-approve-02.
+
+Let me check the extraction rule quickly to get it right.
+
+[assistant • pwsh]
+{"command":"Select-String -Path \"D:\\zuixin\\backend\\app\\agents\\nodes\\plan_action.py\" -Pattern \"notify\" | Select-Object LineNumber,Line | Format-Table -AutoSize -Wrap","description":"Inspect notify_reporter extraction rule","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+LineNumber Line                                                                          
+---------- ----                                                                          
+        44 NOTIFY_CLAUSE_PATTERN = re.compile(                                           
+        50     text = NOTIFY_CLAUSE_PATTERN.sub("", query)                               
+       129         notify = any(word in query for word in ("通知", "告诉他", "告诉提单人", "发个消息"))
+       133             "notify_reporter": notify,                                        
+       138             "notify_reporter": "from_user",                                   
+       212     """从事实里挑出这张单（证据层已经把权限提示 can_write / notify_reports_self 附上了）。"""          
+       246     if args.get("notify_reporter"):                                           
+       248         if record and record.get("notify_reports_self"):                      
+       249             args["notify_reporter"] = False                                   
+       250             arg_sources["notify_reporter"] = "from_context"                   
+
+
+
+
+[assistant]
+Line 246-250: if args.notify_reporter and record has `notify_reports_self` (i.e., the reporter is yourself), it downgrades to False. Since u-1001 is the reporter of TK-20261106-0005 (created by 陈晓 = u-1001), notification to self is pointless → downgraded. That's the correct product behavior we implemented earlier ("notify 自己无意义 → 降级为可逆写").
+
+So to get approve gate, I must close a ticket NOT owned by the actor. E.g., u-1001 closing TK-20261106-0006 (李敏's?) — but then permission check: only reporter or supervisor. u-9001 supervisor could close TK-20261106-0006 which is 李敏's ticket (u-9001 is 李敏?) Hmm.
+
+From earlier CLI test: `--thread t-appr-2 --user u-9001 --role approver -m "…关掉 TK-20261106-0006，并通知提单人"` → approve gate. So use u-9001 with approver role and TK-20261106-0006.
+
+But for a demo screenshot, the narrative "员工发起 → 主管批准" needs the *requester* to be the employee. If u-9001 (approver) requests, then approving requires a different person (u-9002)... The doc card would show 发起人 u-9001. Acceptable but less ideal.
+
+Alternative: create a ticket owned by someone else and have u-1001 close it with notify → but u-1001 can't close others' tickets (not_allowed). Unless u-1001 has approver role... 
+
+Let's use u-1001 with tenant... hmm.
+
+Actually simplest for the "employee escalates to supervisor" story: create a ticket as u-2002 (王一诺, 运维) then close as u-1001? No—u-1001 can't.
+
+Reverse the story: u-2002 (运维受理人) closes 陈晓's ticket TK-20261106-0005 with notify → notify_reports_self = false (reporter is 陈晓, actor u-2002) → risk escalates to write_irreversible → approve gate, and required role approver. That's a perfect story: 运维受理人处理完员工工单，要通知员工，因此需要主管批准。
+
+Let me do: headers u-2002, roles employee (运维不是 approver). Message: "把 TK-20261106-0005 关掉，处理结论是重置了登录态，并通知提单人".
+
+Wait: does the tool allow u-2002 to close? guard: reporter or supervisor(approver) or... 运维受理人 probably not allowed → not_allowed. Hmm. Earlier we saw `can_write` facts.
+
+Let me just test quickly with curl and inspect the outcome. Use thread demo-approve-02, user u-2002.
+
+Actually — the earlier successful CLI test used `--user u-9001 --role approver` for approve gate on TK-20261106-0006. And for the confirm-gate screenshot the current paused thread demo-approve-01 is fine (it shows 确认单 · CONFIRM).
+
+Let me try the u-2002 variant and see.
+
+[assistant • write]
+{"content":"{\"message\":\"关掉 TK-20261106-0005，结论是重置了登录态，并通知提单人\",\"thread_id\":\"demo-approve-02\"}\n","file_path":"D:\\zuixin\\.tmp-chat-body.json"}
+
+[tool • write]
+<path>D:\zuixin\.tmp-chat-body.json</path>
+<type>file</type>
+<content>
+Updated file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"curl.exe -s -N -X POST \"http://127.0.0.1:8010/api/v1/chat/stream\" -H \"Content-Type: application/json\" -H \"X-User-Id: u-2002\" -H \"X-Tenant-Id: tenant-demo\" -H \"X-Roles: employee\" --data-binary \"@D:\\zuixin\\.tmp-chat-body.json\" --max-time 150 > \"D:\\zuixin\\.tmp-sse2.txt\" 2>&1\nGet-Content \"D:\\zuixin\\.tmp-sse2.txt\" -Tail 6","description":"Try closing others ticket as ops user","timeoutMs":240000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+event: node
+data: {"node": "compose_reply", "ms": 1}
+
+event: done
+data: {"thread_id": "demo-approve-02", "outcome": "denied", "intent": "action", "gate": "approve", "risk": "write_irreversible", "reply": "你没有权限操作工单 TK-20261106-0005：只有提单人本人或有权限的同事（approver）才能处理", "citations": ["[1] 星澜科技 IT 服务级别与工单处理规范 · 第 4 章 工单生命周期 · 4.2 催办与自动关闭", "[2] 星澜科技 IT 服务级别与工单处理规范 · 第 4 章 工单生命周期 · 4.1 状态流转", "[3] 星澜科技 账号与权限管理办法 · 第 5 章 变更、离职与回收 · 5.3 长期未使用账号"], "ticket_no": null, "via": null, "approval": null, "elapsed_ms": 5493, "tokens": {"in": 916, "out": 76}}
+
+
+
+[assistant]
+As expected, u-2002 denied. Use u-9001 with approver role on TK-20261106-0006 (owned by someone else) → approve gate. Narrative: 主管处理别人的单… but then who approves? Another approver (u-9002). For the demo doc, `isRequest` logic: `mode === 'request'` when current identity can't decide. If u-9001 (approver) is viewing, they'd be in "decide" mode... but requester is also u-9001 → self-approval flag.
+
+Hmm. Better: make the requester an employee who IS allowed to close: the ticket reporter. Reporter of TK-20261106-0000x belong to u-1001. Closing own ticket with notify → downgraded (as seen).
+
+Unless notify targets someone else... the rule only downgrades when reporter == actor.
+
+So the only way to reach approve gate via close+notify is actor != reporter, and actor must have permission (reporter or approver). So actor must be an approver closing someone else's ticket.
+
+Story: 主管李敏(u-9001) 替员工关单并通知员工 → 需要另一位主管批准（发起≠批准）。That's a legit "四眼原则" story! And it's exactly the self-approval prevention.
+
+For the screenshot, I'd want the current identity to be able to see the "发起人不能批准自己的单" state — that's GateCard's isRequest branch. But better screenshot = decidable approve doc with 通过/驳回 buttons. That requires viewing as a *different* approver (u-9002).
+
+So: create thread as u-9001 (approver) closing TK-20261106-0006 with notify → approve gate, mode=request for u-9001, mode=decide for u-9002.
+
+Then screenshot with `?thread=...` while identity is u-9002... but identity comes from localStorage. For the headless screenshot I can't easily set localStorage.
+
+Options: identity default is PRESETS[0] = u-1001 employee. For the screenshot to show buttons, the payload mode must be 'decide'. Mode is computed server-side per resume identity... but the interrupt payload is rendered from `/runs/{id}` which is fetched with the current identity headers → so mode depends on identity! Since `read_run` → `paused`/`interrupt` payload is stored in checkpoint? The payload was generated at interrupt time with the requester's context. Hmm, `human_gate.py` sets `"mode": "decide" if can_decide else "request"` at the time of interrupt creation (based on the actor who hit the gate). So it's baked into the checkpoint.
+
+So for u-9001 requester → mode="decide" (u-9001 is approver) → GateCard shows 通过/驳回 buttons. And `isRequest` is false. The screenshot then shows buttons. But then blockedReason... GateCard doesn't check self-approval; it would show buttons that the backend would reject with self_approved flag. Backend allows but marks self_approved=true (it doesn't block? earlier we saw "自审会被标记"). Actually approve_action marks `self_approved` and continues? From summary: "自审标 self_approved" — it still approves but records the flag. Hmm, and ApprovalView shows blockedReason "发起人不能批准自己的单" only in UI.
+
+OK for the screenshot: if identity is u-1001 (employee, default), the payload mode was computed for u-9001 = 'decide', so buttons show even though u-1001 can't. Slight inconsistency but it's a screenshot.
+
+Cleaner approach: set localStorage in the browser before screenshot. Edge headless can't run JS easily... Actually I can: serve a tiny bootstrap page? Or use `--enable-features` no.
+
+Alternative: temporarily change default identity for screenshot? No, hacky.
+
+Simplest: take the screenshot with the current default identity u-1001 and a thread where u-1001 is the requester at a *confirm* gate (demo-approve-01 already exists, mode decide, confirm type — perfect for u-1001!). That gives a real, coherent 确认单 screenshot with 通过/驳回 available.
+
+And for the 审批单 (approve) screenshot, create a thread as u-9001 and screenshot with default identity u-1001 — the doc will render with buttons but wrong identity. Hmm, inconsistent for README.
+
+Better idea: I can set localStorage by loading a URL with a `javascript:` — no. 
+
+But wait: I can add a dev-only bootstrap via query param? No.
+
+Alternative: Edge supports `--user-data-dir` persistence. If I first load the app, set identity via UI (needs clicks)... 
+
+Hmm, what about seeding localStorage through a data: URL in the same origin? Not same origin.
+
+OK — different approach: make `IdentityCard` read a `?as=u-9002` query param? That's a genuinely useful demo feature ("把链接发给同事，他会以自己身份打开") but auto-switching identity from URL is a security smell... though this is a demo app with header-based identity and a visible identity switcher. It's fine as a demo affordance, but I'd rather not add hacks to product code.
+
+Pragmatic: use Edge's `--headless=new` + DevTools protocol? Could use `--remote-debugging-port` and drive via websocket... too heavy.
+
+Actually simplest legitimate approach: temporarily write a localStorage seed by visiting the app with a tiny injected script through vite's `index.html`? No.
+
+Wait — there's a much simpler path: `vite preview`/dev serves `/` from index.html; I can create a temporary file `frontend/public/__seed.html` that sets localStorage then redirects to `/chat?thread=...`. Since same origin (localhost:5173), localStorage persists for that profile dir. Then navigate to the app with same `--user-data-dir` and screenshot. Two-step with same profile.
+
+That works and doesn't touch product code (just a temp file I delete after).
+
+Let me do that:
+1. Create paused approve thread as u-9001 on TK-20261106-0006 with notify.
+2. Create `frontend/public/__seed.html` with script: localStorage.setItem('smartdesk.identity', JSON.stringify({userId:'u-9002',tenantId:'tenant-demo',roles:['approver','kb_owner']})); location.href='/chat?thread=demo-approve-03';
+3. Run Edge with profile P1: first `__seed.html` (redirect happens inside), with --virtual-time-budget high; screenshot.
+
+Actually --screenshot with a redirect: Edge takes screenshot after load of final page? With --screenshot it captures after the page loads; redirect may happen before capture. Risky but worth trying. Alternatively seed in one run (no screenshot) then screenshot in a second run with same profile.
+
+Let me do two runs:
+Run A: `--headless=new --user-data-dir=...P1 http://localhost:5173/__seed.html` (no screenshot; just executes). Hmm headless without --screenshot still loads page? yes, it renders and exits (with --dump-dom or --virtual-time-budget). Use `--dump-dom` to force load+exit.
+Run B: `--headless=new --user-data-dir=...P1 --screenshot=... "http://localhost:5173/chat?thread=demo-approve-03"`.
+
+Wait, but the app's identity store loads from localStorage at init — good, same profile.
+
+Let me first create the approve-gate thread as u-9001.
+
+Message: "关掉 TK-20261106-0006，结论是已重装证书，并通知提单人". TK-20261106-0006 is 李敏's (u-9001) own? Earlier ticket list: 0006 "VPN客户端证书过期，无法连接内网" 提单人 李敏 (u-9001). Then notify_reports_self = true → downgrade. Ugh.
+
+Use u-9002 (approver) closing u-1001's ticket 0005 with notify → not self → escalate; u-9002 is approver so allowed. Then requester = u-9002, and mode = decide. Viewing as u-1001... inconsistent again.
+
+Hmm, for the doc screenshot, what matters: 审批单 · APPROVE with risk 不可逆写 + 审批链 showing 发起人 → 待批(approver) → execute. If requester = u-2002... 
+
+Let me think differently: create the thread with the *same* identity we screenshot (u-1001 default). For u-1001 to hit approve gate, u-1001 needs to close someone else's ticket with notify — requires approver permission → u-1001 isn't. Unless... u-1001 with roles employee+approver (custom identity). Then u-1001 closes 0006 (李敏's) with notify → escalates to irreversible, mode=decide. And screenshot identity = u-1001 with roles employee,approver.
+
+I can seed localStorage with roles ['employee','approver'] and userId u-1001, then create the thread with headers X-User-Id: u-1001, X-Roles: employee,approver. Consistent! And the doc shows 发起人 陈晓(员工/主管) → 待批 approver.
+
+Hmm, but narrative "员工发起→主管批准" is cleaner. Whatever: the screenshot's purpose is visual verification of the new UI. Let me get *a* real approve doc rendered.
+
+Plan:
+1. Create thread demo-approve-03 as u-1001 with roles "employee,approver", closing TK-20261106-0006 with notify.
+2. Seed localStorage identity u-1001 roles employee,approver into profile P1.
+3. Screenshot /chat?thread=demo-approve-03.
+
+Let me do step 1.
+
+[assistant • write]
+{"content":"{\"message\":\"关掉 TK-20261106-0006，结论是已重装证书，并通知提单人\",\"thread_id\":\"demo-approve-03\"}\n","file_path":"D:\\zuixin\\.tmp-chat-body.json"}
+
+[tool • write]
+<path>D:\zuixin\.tmp-chat-body.json</path>
+<type>file</type>
+<content>
+Updated file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"curl.exe -s -N -X POST \"http://127.0.0.1:8010/api/v1/chat/stream\" -H \"Content-Type: application/json\" -H \"X-User-Id: u-1001\" -H \"X-Tenant-Id: tenant-demo\" -H \"X-Roles: employee,approver\" --data-binary \"@D:\\zuixin\\.tmp-chat-body.json\" --max-time 150 > \"D:\\zuixin\\.tmp-sse3.txt\" 2>&1\nGet-Content \"D:\\zuixin\\.tmp-sse3.txt\" -Tail 4","description":"Create approve-gate paused thread","timeoutMs":240000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+event: interrupt
+data: {"thread_id": "demo-approve-03", "next": ["confirm_action"], "payloads": [{"type": "confirm", "title": "关工单：TK-20261106-0006", "fields": [{"name": "ticket_no", "label": "工单号", "value": "TK-20261106-0006", "source": "from_user", "editable": true}, {"name": "resolution", "label": "解决说明", "value": "TK-20261106-0006，结论是已重装证书，并", "source": "from_user", "editable": true}, {"name": "notify_reporter", "label": "通知提单人", "value": false, "source": "from_context", "editable": true}], "citations": ["[1] 星澜科技 IT 服务级别与工单处理规范 · 第 4 章 工单生命周期 · 4.2 催办与自动关闭", "[2] 星澜科技 IT 服务级别与工单处理规范 · 第 4 章 工单生命周期 · 4.1 状态流转", "[3] 星澜科技 客户订单退款与售后规则 · 第 6 章 售后与争议处理 · 6.2 争议解决"], "risk": "write_reversible", "hint": "确认后才会真正写入系统；发现填错了可以直接改字段。"}], "elapsed_ms": 8907, "tokens": {"in": 916, "out": 58}}
+
+
+
+[assistant]
+notify_reporter got downgraded to false again — because 0006's reporter is u-9001 (李敏)? No wait, actor is u-1001... `notify_reports_self` should be false. But it says `from_context` false. Hmm, maybe the ticket 0006 reporter IS u-1001? Ticket list showed 0006 提单人 李敏 18:32. But maybe reporter id... let me check the facts.
+
+Actually maybe my earlier statement "关掉...并通知提单人" — the regex extraction of notify found "通知" so notify=True, then line 246: `if args.get("notify_reporter")` and record's `notify_reports_self` → if reporter==actor → false. Since we got false, reporter of 0006 must be u-1001.
+
+Let me check the DB: tickets table for 0006.
+
+Also note resolution text got polluted ("TK-...，结论是已重装证书，并") — the extraction is naive.
+
+Let me query the sqlite to find a ticket whose reporter != u-1001.
+
+[assistant • pwsh]
+{"command":"cd D:\\zuixin\n.\\.venv\\Scripts\\python.exe -c \"import sqlite3;c=sqlite3.connect('.data/tickets.sqlite');[print(r) for r in c.execute('select ticket_no,reporter,status,title from tickets order by ticket_no desc limit 12')]\"","description":"List recent tickets and reporters","timeoutMs":60000}
+
+[tool • pwsh]
+('TK-20261106-0007', 'u-1001', 'open', 'VPN �ͻ���֤����ڣ�Ӱ�� 2 ��')
+('TK-20261106-0006', 'u-1001', 'open', 'VPN �ͻ���֤����ڣ�Ӱ�� 2 �ˣ��轨������')
+('TK-20261106-0005', 'u-1001', 'open', '�����ɶ���Ӱ��1��')
+('TK-20261106-0004', 'u-1001', 'open', '��ʾ��������Ӱ��2��')
+('TK-20261106-0003', 'u-2001', 'closed', 'VPN �ͻ���װ���ϣ�Ӱ�� 1 ��')
+('TK-20261106-0002', 'u-1001', 'open', '����ʧ�飬Ӱ��1��')
+('TK-20261106-0001', 'u-1001', 'closed', '��ʾ��������Ӱ��2��')
+('TK-20261105-0008', 'u-1001', 'open', '��ӡ����ֽ�����󽨹���')
+('TK-20261105-0007', 'u-1001', 'closed', 'A��վ��¼���ϣ�Ӱ��3�ˣ����󽨵�')
+('TK-20261105-0006', 'u-1001', 'closed', 'A��վ��¼���ϣ�Ӱ��3�ˣ����󽨹���')
+('TK-20261105-0005', 'u-1001', 'open', '���̽�ˮʧ�飬Ӱ��1��')
+('TK-20261105-0004', 'u-1001', 'closed', '��ӡ����ֽ��Ӱ��2��')
+
+
+[assistant]
+Almost all tickets are u-1001's (the test data was created by u-1001). Only 0003 is u-2001's but it's closed.
+
+So: to get approve gate, actor must be u-1001 and reporter must NOT be u-1001. Let me create a new ticket as u-2001 (employee), then close it as u-1001 with approver role + notify → notify_reports_self=false → escalate to irreversible → approve gate.
+
+Two steps:
+1. POST chat/stream as u-2001: "帮我建个工单：会议室投影仪没信号，影响 2 个人" → confirm gate → resume approve as u-2001 → creates ticket owned by u-2001.
+2. POST as u-1001 roles employee,approver: "关掉 TK-xxx，结论…，并通知提单人" → approve gate.
+
+That's a bit long but fine. Alternatively insert a ticket directly into sqlite (fast): INSERT with reporter='u-2002'. Since it's demo data, direct DB insert is acceptable... but must match schema. Cleaner to use the API path (2 clicks). Actually simplest: create via API using the tool directly (MCP create_ticket) — no, chat flow needs confirm.
+
+Let me just do the two-step chat flow; it also validates the real flow.
+
+Step 1: create ticket as u-2001.
+
+Actually even faster: `ticket_tools.create_ticket` via python script. Let me use a small python call using the MCP wrapper in-process. Hmm, stdio spawn in this shell might be fine (previous CLI worked).
+
+Simplest: direct sqlite INSERT. Schema: tickets(tenant_id, ticket_no, title, description, category?, urgency?, status, reporter, assignee?, resolution?, created_at, updated_at?, ...). Let me check schema then insert.
+
+Actually the chat flow takes ~10s and is more honest. But it costs tokens with large SSE outputs. I'll do a compact python script that calls the ticket_tools wrapper (which uses MCP stdio → works, per earlier tests).
+
+[assistant • write]
+{"content":"from backend.app.agents.tools import ticket_tools\nfrom backend.app.agents.state import UserContext\n\nactor = UserContext(user_id=\"u-2002\", tenant_id=\"tenant-demo\", roles=(\"employee\",))\nres = ticket_tools.create_ticket(\n    actor,\n    title=\"财务系统登录后一直空白\",\n    description=\"财务同事实名反馈登录后页面空白，影响 2 人\",\n    category=\"财务系统\",\n    urgency=\"中\",\n)\nprint(res)\n","file_path":"D:\\zuixin\\.tmp-mk.py"}
+
+[tool • write]
+<path>D:\zuixin\.tmp-mk.py</path>
+<type>file</type>
+<content>
+Created file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"cd D:\\zuixin\n.\\.venv\\Scripts\\python.exe .tmp-mk.py","description":"Create a ticket owned by u-2002","timeoutMs":120000}
+
+[tool • pwsh]
+{'ok': True, 'ticket': {'id': 37, 'ticket_no': 'TK-20261106-0008', 'tenant_id': 'tenant-demo', 'title': '����ϵͳ��¼��һֱ�հ�', 'description': '����ͬ��ʵ��������¼��ҳ��հף�Ӱ�� 2 ��', 'urgency': 'medium', 'category': '����ϵͳ', 'reporter': 'u-2002', 'status': 'open', 'source': 'mcp', 'created_at': '2026-11-06 21:11:31', 'updated_at': '2026-11-06 21:11:31', 'resolution': '', 'notified': False, 'assignee': ''}}
+[stderr]
+[11/06/26 21:11:29] INFO     Starting MCP server               transport.py:241
+                             'smartdesk-ticket' with transport                 
+                             'stdio'                                           
+[11/06/26 21:11:31] INFO     Starting MCP server               transport.py:241
+                             'smartdesk-ticket' with transport                 
+                             'stdio'                                           
+
+
+[assistant]
+Created TK-20261106-0008 owned by u-2002.
+
+Now create approve-gate thread: actor u-1001 with roles employee,approver closing TK-20261106-0008 with notify.
+
+Message: "关掉 TK-20261106-0008，结论是已重置财务系统会话缓存，并通知提单人"
+
+Note extraction pollution of resolution is a cosmetic issue in this demo. Fine.
+
+Let me run it.
+
+[assistant • write]
+{"content":"{\"message\":\"关掉 TK-20261106-0008，结论是已重置财务系统会话缓存，并通知提单人\",\"thread_id\":\"demo-approve-03\"}\n","file_path":"D:\\zuixin\\.tmp-chat-body.json"}
+
+[tool • write]
+<path>D:\zuixin\.tmp-chat-body.json</path>
+<type>file</type>
+<content>
+Updated file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"curl.exe -s -N -X POST \"http://127.0.0.1:8010/api/v1/chat/stream\" -H \"Content-Type: application/json\" -H \"X-User-Id: u-1001\" -H \"X-Tenant-Id: tenant-demo\" -H \"X-Roles: employee,approver\" --data-binary \"@D:\\zuixin\\.tmp-chat-body.json\" --max-time 150 > \"D:\\zuixin\\.tmp-sse4.txt\" 2>&1\nGet-Content \"D:\\zuixin\\.tmp-sse4.txt\" -Tail 4","description":"Create approve gate on ticket owned by other user","timeoutMs":240000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+{"detail":"会话 demo-approve-03 正在等待确认，请先处理挂起的卡片，或换一个 thread_id 新开会话。"}
+
+
+[assistant]
+The 409 guard works (nice validation!). Use a new thread id: demo-approve-04.
+
+[assistant • write]
+{"content":"{\"message\":\"关掉 TK-20261106-0008，结论是已重置财务系统会话缓存，并通知提单人\",\"thread_id\":\"demo-approve-04\"}\n","file_path":"D:\\zuixin\\.tmp-chat-body.json"}
+
+[tool • write]
+<path>D:\zuixin\.tmp-chat-body.json</path>
+<type>file</type>
+<content>
+Updated file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"curl.exe -s -N -X POST \"http://127.0.0.1:8010/api/v1/chat/stream\" -H \"Content-Type: application/json\" -H \"X-User-Id: u-1001\" -H \"X-Tenant-Id: tenant-demo\" -H \"X-Roles: employee,approver\" --data-binary \"@D:\\zuixin\\.tmp-chat-body.json\" --max-time 150 > \"D:\\zuixin\\.tmp-sse5.txt\" 2>&1\nGet-Content \"D:\\zuixin\\.tmp-sse5.txt\" -Tail 4","description":"Create approve gate thread demo-approve-04","timeoutMs":240000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+event: interrupt
+data: {"thread_id": "demo-approve-04", "next": ["approve_action"], "payloads": [{"type": "approve", "mode": "decide", "requested_by": "u-1001", "title": "关工单：TK-20261106-0008", "fields": [{"name": "ticket_no", "label": "工单号", "value": "TK-20261106-0008", "source": "from_user", "editable": true}, {"name": "resolution", "label": "解决说明", "value": "TK-20261106-0008，结论是已重置财务系统会话缓存，并", "source": "from_user", "editable": true}, {"name": "notify_reporter", "label": "通知提单人", "value": true, "source": "from_user", "editable": true}], "citations": ["[1] 星澜科技 IT 服务级别与工单处理规范 · 第 4 章 工单生命周期 · 4.2 催办与自动关闭", "[2] 星澜科技 IT 服务级别与工单处理规范 · 第 4 章 工单生命周期 · 4.1 状态流转", "[3] 星澜科技 客户订单退款与售后规则 · 第 6 章 售后与争议处理 · 6.2 争议解决"], "risk": "write_irreversible", "required_roles": ["approver"], "hint": "关闭并通知提单人后撤不回；请确认解决说明写得清楚。"}], "elapsed_ms": 8140, "tokens": {"in": 918, "out": 58}}
+
+
+
+[assistant]
+Now we have a paused approve gate thread `demo-approve-04` with risk write_irreversible, mode decide, required_roles [approver].
+
+Now seed localStorage identity (u-1001 with roles employee,approver) into an Edge profile, then screenshot /chat?thread=demo-approve-04.
+
+Create `frontend/public/__seed.html`. Vite serves public/ at root in dev.
+
+Then run Edge twice with same profile.
+
+Let me write the seed file.
+
+[assistant • write]
+{"content":"<!doctype html>\n<meta charset=\"utf-8\" />\n<title>seed</title>\n<script>\n  localStorage.setItem(\n    'smartdesk.identity',\n    JSON.stringify({ userId: 'u-1001', tenantId: 'tenant-demo', roles: ['employee', 'approver'] }),\n  )\n  document.title = 'seeded'\n</script>\n","file_path":"D:\\zuixin\\frontend\\public\\__seed.html"}
+
+[tool • write]
+<path>D:\zuixin\frontend\public\__seed.html</path>
+<type>file</type>
+<content>
+Created file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$edge = \"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe\"\n$prof = \"D:\\zuixin\\.tmp-edge-seed\"\nRemove-Item -Recurse -Force $prof -ErrorAction SilentlyContinue\n& $edge --headless=new --disable-gpu --no-first-run --no-default-browser-check --user-data-dir=\"$prof\" --virtual-time-budget=4000 --dump-dom \"http://localhost:5173/__seed.html\" 2>&1 | Select-String -Pattern \"seeded\" | Select-Object -First 2\n\"---\"\nTest-Path $prof","description":"Seed identity into Edge profile","timeoutMs":120000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+<title>seeded</title>
+  document.title = 'seeded'
+---
+True
+
+
+
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$edge = \"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe\"\n$prof = \"D:\\zuixin\\.tmp-edge-seed\"\n$out = \"D:\\zuixin\\.tmp-shot\\real-chat.png\"\n& $edge --headless=new --disable-gpu --hide-scrollbars --no-first-run --no-default-browser-check --user-data-dir=\"$prof\" --force-device-scale-factor=1 --window-size=1560,980 --virtual-time-budget=9000 --screenshot=\"$out\" \"http://localhost:5173/chat?thread=demo-approve-04\" 2>&1 | Out-Null\nGet-Item $out | Select-Object Name,Length","description":"Screenshot real chat view with approval doc","timeoutMs":180000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+Name          Length
+----          ------
+real-chat.png 175047
+
+

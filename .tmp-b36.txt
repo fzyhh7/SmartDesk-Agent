@@ -1,0 +1,109 @@
+[assistant]
+The third pill is an empty dashed circle — that's the tenant pill rendering with **no text and tiny width**. Why? `.pill.ghost.mono` with `{{ identity.tenantId }}`. identity.tenantId — is it valid? In the template `identity.tenantId` where `identity = useIdentity()` store; the store exposes `identity` ref (named identity). So `identity.tenantId` is undefined → empty pill!
+
+Because useIdentity() returns `{ identity, presetKey, headers, ... }` — the ref is `identity.value`. In a template, `identity.tenantId` would be unwrapped only if `identity` were the ref itself exposed at top level. Since the store returns `{ identity }`, `identity.identity.userId`... wait, in App.vue: `const identity = useIdentity()` then `identity.tenantId` — that's the store object, whose `.identity` is the ref (auto-unwrapped by store? Pinia unwraps refs returned from setup stores — yes! Pinia unwraps `ref` properties on the store instance). So `identity.identity` is the Identity object. And `identity.tenantId` is undefined since the store has no `tenantId` key.
+
+So the fix: `identity.identity.tenantId` (ugly) — better destructure: `const { identity: me } = storeToRefs(...)`.
+
+In ChatView and elsewhere I used `identity.headers` (a computed on store → fine) and `identity.userId`? Let me check usages: ApprovalView uses `identity.isApprover` (computed on store → fine), `identity.userId` — hmm that's the store, no userId! Let me grep for `identity.userId` / `identity.tenantId` / `identity.roles` usage which would be undefined.
+
+Also IdentityCard/SideNav may use `identity.roles`, `identity.userId` — those would be broken (avatar name etc.). But the screenshot shows 陈晓/员工·主管 correctly in the identity card, so those components use something else (probably `identity.identity` or people store...).
+
+Let me grep.
+
+[assistant • pwsh]
+{"command":"cd D:\\zuixin\\frontend\\src\nSelect-String -Path *.vue,*.ts,**\\*.vue,**\\*.ts -Pattern \"identity\\.(userId|tenantId|roles|display_name)\" | Select-Object LineNumber,Line,Filename | Format-Table -AutoSize -Wrap","description":"Find wrong identity field accesses","workdir":"D:\\zuixin\\frontend\\src"}
+
+[tool • pwsh]
+
+LineNumber Line                                                                                                        
+---------- ----                                                                                                        
+        51           <span class="pill ghost mono">{{ identity.tenantId }}</span>                                      
+        72           <input v-model="identity.userId" class="input mono" spellcheck="false" />                         
+        76           <input v-model="identity.tenantId" class="input mono" spellcheck="false" />                       
+        86               :class="{ on: identity.roles.includes(role) }"                                                
+       105         <span class="who-role">{{ rolesText(identity.roles) }} · {{ identity.tenantId }}</span>             
+        87     if (row.requester === identity.userId) return '发起人不能批准自己的单，切成主管身份再来'                                    
+        90   if (row.requester !== identity.userId) return '这一步只等提单人本人确认，别人点会被后端拒绝'                                    
+       399             <div class="eyebrow">{{ identity.tenantId || 'tenant-demo' }} · IT 服务台</div>                    
+        41   if (mineOnly.value) list = list.filter((row) => row.reporter === identity.userId)                         
+        56   const base = mineOnly.value ? rows.value.filter((row) => row.reporter === identity.userId) : rows.value   
+        30   return { ...PRESETS[0].identity, roles: [...PRESETS[0].identity.roles] }                                  
+        35   const presetKey = ref<string>(PRESETS.find((p) => p.identity.userId === identity.value.userId)?.key ?? 'cu
+           stom')                                                                                                      
+        52     identity.value = { ...preset.identity, roles: [...preset.identity.roles] }                              
+        64       if (presetKey.value !== 'custom' && PRESETS.find((p) => p.key === presetKey.value)?.identity.userId !=
+           = value.userId) {                                                                                           
+
+
+
+
+[assistant]
+Several places use `identity.tenantId` / `identity.userId` / `identity.roles` where `identity` is the store, not the Identity object. Some components apparently destructure properly (IdentityCard shows correct data — maybe it uses `identity.identity`).
+
+Best fix: in the identity store, expose passthrough computed getters? That could collide with the `identity` ref name. Alternative: in each component, get the object via `storeToRefs`:
+
+```ts
+const identityStore = useIdentity()
+const me = computed(() => identityStore.identity)
+```
+then use `me.userId`.
+
+But simplest global fix: add getters to the store: `userId`, `tenantId`, `roles` computed. Then `identity.userId` works everywhere without touching templates. That's clean and pragmatic:
+
+```ts
+const userId = computed(() => identity.value.userId)
+const tenantId = computed(() => identity.value.tenantId)
+const roles = computed(() => identity.value.roles)
+```
+and return them.
+
+But IdentityCard uses `v-model="identity.userId"` — needs writable. Let me check IdentityCard: it probably destructured `const { identity } = storeToRefs(useIdentity())` so `identity` there is the ref → `identity.userId` in template works (auto-unwrap). Yes! Since the card renders correctly and has v-model working, IdentityCard must use storeToRefs.
+
+So only App.vue, ApprovalView, TicketsView, ChatView(eyebrow) use raw store. Adding computed getters named userId/tenantId/roles to the store would make `identity.userId` work in those (read-only), and won't conflict with storeToRefs usage.
+
+Careful: Pinia store property named `identity` (the ref) and adding `roles` computed is fine.
+
+Let me add to stores/identity.ts:
+
+```ts
+  /** 给"直接拿 store"的组件用（等价于 identity.value.xxx），省得每处都 storeToRefs。 */
+  const userId = computed(() => identity.value.userId)
+  const tenantId = computed(() => identity.value.tenantId)
+  const roles = computed(() => identity.value.roles)
+```
+and return them.
+
+Then App.vue's `{{ identity.tenantId }}` works.
+
+Let me apply.
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\frontend\\src\\stores\\identity.ts","new_string":"  // 角色只有后端 guard.VALID_ROLES 认的三种（employee / approver / kb_owner），前端不另造 admin\n  const isApprover = computed(() => identity.value.roles.includes('approver'))\n  const canPublishKb = computed(() => identity.value.roles.includes('kb_owner'))\n\n  /**\n   * 只读快照，给\"直接拿 store 用\"的组件（顶栏、看板、表格）。\n   * 用 storeToRefs 解构的组件仍然拿 `identity` 那一个 ref，两套写法都成立。\n   */\n  const userId = computed(() => identity.value.userId)\n  const tenantId = computed(() => identity.value.tenantId)\n  const roles = computed(() => identity.value.roles)","old_string":"  // 角色只有后端 guard.VALID_ROLES 认的三种（employee / approver / kb_owner），前端不另造 admin\n  const isApprover = computed(() => identity.value.roles.includes('approver'))\n  const canPublishKb = computed(() => identity.value.roles.includes('kb_owner'))"}
+
+[tool • edit]
+The file D:\zuixin\frontend\src\stores\identity.ts has been updated successfully.
+
+[assistant]
+
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\frontend\\src\\stores\\identity.ts","new_string":"  return {\n    identity,\n    presetKey,\n    headers,\n    isApprover,\n    canPublishKb,\n    userId,\n    tenantId,\n    roles,\n    applyPreset,\n    setRole,\n  }","old_string":"  return { identity, presetKey, headers, isApprover, canPublishKb, applyPreset, setRole }"}
+
+[tool • edit]
+The file D:\zuixin\frontend\src\stores\identity.ts has been updated successfully.
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$env:TEMP=\"D:\\zuixin\\.tmp-build\"; $env:TMP=\"D:\\zuixin\\.tmp-build\"; $env:TMPDIR=\"D:\\zuixin\\.tmp-build\"\ncd D:\\zuixin\\frontend\nnode .\\node_modules\\typescript\\bin\\tsc -p tsconfig.json --noEmit 2>&1 | Select-Object -First 15\n\"---tsc ok---\"\n$edge = \"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe\"\n& $edge --headless=new --disable-gpu --hide-scrollbars --no-first-run --no-default-browser-check --user-data-dir=\"D:\\zuixin\\.tmp-edge-seed\" --force-device-scale-factor=1 --window-size=1560,980 --virtual-time-budget=9000 --screenshot=\"D:\\zuixin\\.tmp-shot\\real-chat.png\" \"http://localhost:5173/chat?thread=demo-approve-04\" 2>&1 | Out-Null\nGet-Item \"D:\\zuixin\\.tmp-shot\\real-chat.png\" | Select-Object Length","description":"Type-check and re-screenshot chat","timeoutMs":300000,"workdir":"D:\\zuixin\\frontend"}
+
+[tool • pwsh]
+---tsc ok---
+
+Length
+------
+173271
+
+

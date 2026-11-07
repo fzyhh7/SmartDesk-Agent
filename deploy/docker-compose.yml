@@ -1,8 +1,13 @@
-﻿# SmartDesk-Agent 鏈湴渚濊禆鏈嶅姟
-# 鍚姩锛歝d deploy; docker compose up -d
-# 楠屾敹锛歞ocker compose ps锛堢瓑 milvus 鐨?HEALTH 鍙?healthy锛岀害 1-3 鍒嗛挓锛?#
-# 璇存槑锛歁inIO 鍦?2025 骞存妸绀惧尯鐗堥暅鍍忎粠 Docker Hub / Quay 鍏ㄩ儴涓嬫灦锛?# 瀹樻柟 compose 閲岀殑 minio/minio:<RELEASE...> 宸茬粡鎷変笉鍒般€?# 鍥犳杩欓噷鏀圭敤 Milvus standalone 鐨勩€屾湰鍦板瓨鍌ㄣ€嶅悗绔紙COMMON_STORAGETYPE=local锛夛紝
-# 灏戜竴涓鍣ㄣ€佸皯涓€浠藉唴瀛橈紝鍔熻兘锛坉ense+sparse 娣峰悎妫€绱級瀹屽叏涓嶅彈褰卞搷銆?# 濡傞渶鍒囧洖 MinIO锛岃鏂囦欢鏈熬娉ㄩ噴閲岀殑 fallback銆?name: smartdesk
+# SmartDesk-Agent 本地依赖服务
+# 启动：cd deploy; docker compose up -d
+# 验收：docker compose ps（等 milvus 的 HEALTH 变 healthy，约 1-3 分钟）
+#
+# 说明：MinIO 在 2025 年把社区版镜像从 Docker Hub / Quay 全部下架，
+# 官方 compose 里的 minio/minio:<RELEASE...> 已经拉不到。
+# 因此这里改用 Milvus standalone 的「本地存储」后端（COMMON_STORAGETYPE=local），
+# 少一个容器、少一份内存，功能（dense+sparse 混合检索）完全不受影响。
+# 如需切回 MinIO，见文件末尾注释里的 fallback。
+name: smartdesk
 
 services:
   postgres:
@@ -14,7 +19,8 @@ services:
       POSTGRES_PASSWORD: ${PG_PASSWORD}
       POSTGRES_DB: ${PG_DB}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
-      # 鍏抽敭锛歜ind mount 鐩綍閲屽彲鑳芥湁 .gitkeep 绛夐殣钘忔枃浠讹紝initdb 瑕佹眰鏁版嵁鐩綍涓虹┖锛?      # 鎵€浠ユ妸 PGDATA 鎸囧埌鎸傝浇鐐逛笅鐨勫瓙鐩綍锛堝畼鏂规帹鑽愬仛娉曪級
+      # 关键：bind mount 目录里可能有 .gitkeep 等隐藏文件，initdb 要求数据目录为空，
+      # 所以把 PGDATA 指到挂载点下的子目录（官方推荐做法）
       PGDATA: /var/lib/postgresql/data/pgdata
       TZ: Asia/Shanghai
     ports:
@@ -55,7 +61,7 @@ services:
       - seccomp:unconfined
     environment:
       ETCD_ENDPOINTS: etcd:2379
-      # 鍏抽敭锛氫笉渚濊禆瀵硅薄瀛樺偍锛屽悜閲?绱㈠紩鏁版嵁鐩存帴鍐欐湰鍦板嵎
+      # 关键：不依赖对象存储，向量/索引数据直接写本地卷
       COMMON_STORAGETYPE: local
       LOCALSTORAGE_PATH: /var/lib/milvus/data
       TZ: Asia/Shanghai
@@ -85,12 +91,15 @@ services:
       - milvus
 
 # ============================================================
-# Fallback锛氬鏋滃摢澶╂兂鍒囧洖 MinIO锛堟垨鏈湴瀛樺偍鍦ㄤ綘鐨?Milvus 鐗堟湰涓婁笉鍙敤锛夛紝
-# 1) 鍙栨秷涓嬮潰娉ㄩ噴锛?) milvus 鐨?environment 鎹㈠洖锛?#      ETCD_ENDPOINTS: etcd:2379
+# Fallback：如果哪天想切回 MinIO（或本地存储在你的 Milvus 版本上不可用），
+# 1) 取消下面注释；2) milvus 的 environment 换回：
+#      ETCD_ENDPOINTS: etcd:2379
 #      MINIO_ADDRESS: minio:9000
 #      MINIO_ACCESS_KEY_ID: ${MINIO_USER}
 #      MINIO_SECRET_ACCESS_KEY: ${MINIO_PASSWORD}
-#    骞跺垹鎺?COMMON_STORAGETYPE / LOCALSTORAGE_PATH锛?) depends_on 鍔犲洖 minio銆?# 娉ㄦ剰 Bitnami 闀滃儚鐨勬暟鎹洰褰曟槸 /bitnami/minio/data锛岀幆澧冨彉閲忔槸 ROOT_USER/ROOT_PASSWORD銆?#
+#    并删掉 COMMON_STORAGETYPE / LOCALSTORAGE_PATH；3) depends_on 加回 minio。
+# 注意 Bitnami 镜像的数据目录是 /bitnami/minio/data，环境变量是 ROOT_USER/ROOT_PASSWORD。
+#
 #  minio:
 #    image: ${MINIO_IMAGE}
 #    container_name: smartdesk-minio
@@ -105,3 +114,4 @@ services:
 #    volumes:
 #      - ./data/minio:/bitnami/minio/data
 # ============================================================
+

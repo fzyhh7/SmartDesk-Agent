@@ -1,0 +1,2750 @@
+[assistant]
+Now let me run the CLI E2E publish test. I need to check the run_graph CLI usage first for the resume/approve flow.
+
+Let me recall: `--thread t-appr-2 --user u-9001 --role approver -m "..."` then `--user u-9002 --role approver --role kb_owner --approve` resume. Probably `run_graph.py` accepts `--approve` to resume with approval.
+
+Let me check the run_graph.py args.
+
+[assistant • grep]
+{"pattern":"add_argument","path":"D:\\zuixin\\scripts\\run_graph.py"}
+
+[tool • grep]
+Found 12 matches
+
+scripts\run_graph.py
+Line 215:     parser.add_argument("--thread", default="t1", help="会话 id（= thread_id，跨进程恢复靠它）")
+Line 216:     parser.add_argument("--tenant", default="tenant-demo", help="租户 id（多租户隔离）")
+Line 217:     parser.add_argument("--user", default="u-1001", help="员工 id")
+Line 218:     parser.add_argument(
+Line 232:     run.add_argument("-m", "--message", required=True, help="员工说的话")
+Line 237:     resume.add_argument("--approve", action="store_true", help="同意")
+Line 238:     resume.add_argument("--reject", action="store_true", help="驳回")
+Line 239:     resume.add_argument("--edit", help="改字段后继续，如 urgency=high,title=\"xxx\"")
+Line 240:     resume.add_argument("--answer", help="补充信息，如 ticket_no=TK-20261031-0001")
+Line 241:     resume.add_argument("-m", "--message", help="驳回理由")
+Line 262:     approvals.add_argument(
+Line 268:     approvals.add_argument("--limit", type=int, default=20)
+
+[user]
+<acp tokens="63" type="text" time="2026-11-06 19:57:47">m01084</acp>
+Time sampled while preparing turn 15, step 89: 2026-11-06T19:57:47+08:00[Asia/Shanghai]
+Browser time zone for this request: Asia/Shanghai. Interpret otherwise-unqualified dates and times in this zone.
+Elapsed since the preceding step context: 10m 1s.
+
+[assistant]
+Let me now run the CLI E2E publish test. I need to check the run_graph.py resume subcommand structure.
+
+Let me look at lines 205-250 for the subparser names.
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\scripts\\run_graph.py","offset":205,"limit":45}
+
+[tool • read]
+<path>D:\zuixin\scripts\run_graph.py</path>
+<type>file</type>
+<content>
+205:         if line in {":q", "quit", "exit"}:
+206:             break
+207:         args.message = line
+208:         _handle_output(_invoke(args))
+209: 
+210: 
+211: # --------------------------------------------------------------------------- #
+212: # 参数
+213: # --------------------------------------------------------------------------- #
+214: def _add_common(parser: argparse.ArgumentParser) -> None:
+215:     parser.add_argument("--thread", default="t1", help="会话 id（= thread_id，跨进程恢复靠它）")
+216:     parser.add_argument("--tenant", default="tenant-demo", help="租户 id（多租户隔离）")
+217:     parser.add_argument("--user", default="u-1001", help="员工 id")
+218:     parser.add_argument(
+219:         "--role",
+220:         action="append",
+221:         choices=["employee", "approver", "kb_owner"],
+222:         help="角色，可重复：--role employee --role kb_owner",
+223:     )
+224: 
+225: 
+226: def build_parser() -> argparse.ArgumentParser:
+227:     parser = argparse.ArgumentParser(description="SmartDesk AI 服务台 Agent CLI")
+228:     sub = parser.add_subparsers(dest="command", required=True)
+229: 
+230:     run = sub.add_parser("run", help="发一句话，跑到暂停或结束")
+231:     _add_common(run)
+232:     run.add_argument("-m", "--message", required=True, help="员工说的话")
+233:     run.set_defaults(func=cmd_run)
+234: 
+235:     resume = sub.add_parser("resume", help="从暂停点继续（确认 / 审批 / 补充信息）")
+236:     _add_common(resume)
+237:     resume.add_argument("--approve", action="store_true", help="同意")
+238:     resume.add_argument("--reject", action="store_true", help="驳回")
+239:     resume.add_argument("--edit", help="改字段后继续，如 urgency=high,title=\"xxx\"")
+240:     resume.add_argument("--answer", help="补充信息，如 ticket_no=TK-20261031-0001")
+241:     resume.add_argument("-m", "--message", help="驳回理由")
+242:     resume.set_defaults(func=cmd_resume)
+243: 
+244:     state = sub.add_parser("state", help="看当前 State 快照（停在哪个节点、有哪些字段）")
+245:     _add_common(state)
+246:     state.set_defaults(func=cmd_state)
+247: 
+248:     graph = sub.add_parser("graph", help="打印 Mermaid 图")
+249:     _add_common(graph)
+
+(Showing lines 205-249 of 283. Use offset=250 to continue.)
+</content>
+
+[assistant]
+Now let me run the CLI E2E publish flow. First clean up the previous t-pub thread (it's stuck). Let me check what state it's in, then use a new thread t-pub2.
+
+Actually, let me first check the t-pub thread state — it may still be hanging on a checkpoint with a run in progress. The hang happened during execute; the checkpoint might be in a weird state. I'll just use a new thread.
+
+Steps:
+1. `run` with u-3001 kb_owner: publish something short quoted → expect approve gate.
+2. `resume --approve` as u-9002 → expect success writing to Milvus.
+
+Let me do that. Also need to clean up probe rows in Milvus afterwards.
+
+Let me write a single command sequence.
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe -m scripts.run_graph run --thread t-pub2 --user u-3001 --role kb_owner -m \"把这条发到知识库：「会议室预约制度」\" 2>&1 | Select-Object -Last 25","description":"Run publish flow to approval gate","timeoutMs":180000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+[暂停] 等你一句话（类型：clarify）
+  AI 问：要发布的内容是什么？可以把处理过程直接贴给我。
+  标题：发布知识文章：会议室预约制度
+  提示：回答后会从断点继续，不需要重新描述一遍。
+  继续：python -m scripts.run_graph resume --thread <id> --approve / --reject / --edit k=v / --answer k=v
+
+[原始载荷]
+{
+  "type": "clarify",
+  "question": "要发布的内容是什么？可以把处理过程直接贴给我。",
+  "missing": [
+    "content"
+  ],
+  "options": [],
+  "title": "发布知识文章：会议室预约制度",
+  "hint": "回答后会从断点继续，不需要重新描述一遍。"
+}
+
+
+[assistant]
+The title was extracted from the quoted text, but content is missing. Let me answer with content. Actually the clarify asks for content. Let me use `--answer content="..."`.
+
+Let me check the `_kb_content` extraction — it requires quoted content longer than some length for content? Let me just answer.
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe -m scripts.run_graph resume --thread t-pub2 --user u-3001 --role kb_owner --answer \"content=会议室需提前一天在小程序预约，单次最长 2 小时，超时自动释放。\" 2>&1 | Select-Object -Last 30","description":"Answer clarify with publish content","timeoutMs":180000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+    },
+    {
+      "name": "tags",
+      "label": "标签",
+      "value": [
+        "知识库",
+        "员工提问沉淀"
+      ],
+      "source": "from_user",
+      "editable": true
+    },
+    {
+      "name": "change_note",
+      "label": "变更说明",
+      "value": "由员工提问整理：把这条发到知识库：「会议室预约制度」",
+      "source": "from_user",
+      "editable": true
+    }
+  ],
+  "citations": [
+    "[1] 星澜科技 多租户与数据隔离规范 · 第 3 章 知识库与检索隔离 · 3.1 知识库归属",
+    "[2] 星澜科技 多租户与数据隔离规范 · 第 3 章 知识库与检索隔离 · 3.2 检索与引用",
+    "[3] 星澜科技 财务报销与开票管理制度 · 第 1 章 总则 · 1.1 目的与适用范围"
+  ],
+  "risk": "write_irreversible",
+  "required_roles": [
+    "kb_owner"
+  ],
+  "hint": "发布后全员可见，且不能撤回；请确认内容与引用都站得住。"
+}
+[exit code: 1]
+
+[assistant]
+It reached the approve gate. The exit code 1 is probably because it's a pause (interrupt), which is normal. Let me check the full output top and then resume with approve as u-9002.
+
+Wait, exit code 1 — let me check the head of output. But likely that's the standard "paused" behavior... Earlier runs of approve gate probably also exited 1. Let me just resume.
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe -m scripts.run_graph state --thread t-pub2 2>&1 | Select-Object -Last 20; \"=== approvals ===\"; .\\.venv\\Scripts\\python.exe -m scripts.run_graph approvals --status pending --limit 5 2>&1 | Select-Object -Last 25","description":"Inspect paused state and pending approvals","timeoutMs":120000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+  "op": "publish_kb_article",
+  "args": {
+    "title": "会议室预约制度",
+    "content": "会议室需提前一天在小程序预约，单次最长 2 小时，超时自动释放。",
+    "tags": [
+      "知识库",
+      "员工提问沉淀"
+    ],
+    "change_note": "由员工提问整理：把这条发到知识库：「会议室预约制度」"
+  },
+  "missing": [],
+  "server": "kb",
+  "label": "发布知识文章",
+  "sources": {
+    "title": "from_user",
+    "content": "from_user",
+    "tags": "from_user",
+    "change_note": "from_user"
+  }
+}
+=== approvals ===
+      "approver": "",
+      "note": "",
+      "created_at": "2026-11-06 10:17:44",
+      "decided_at": "",
+      "thread_id": "",
+      "self_approved": false
+    },
+    {
+      "id": 26,
+      "tenant_id": "tenant-demo",
+      "op": "create_ticket",
+      "target": "Redis 连接超时，影响 5 人",
+      "risk": "write_reversible",
+      "summary": "建工单：Redis 连接超时，影响 5 人",
+      "requester": "u-1001",
+      "status": "pending",
+      "approver": "",
+      "note": "",
+      "created_at": "2026-11-03 20:46:34",
+      "decided_at": "",
+      "thread_id": "",
+      "self_approved": false
+    }
+  ]
+}
+[exit code: 1]
+
+[assistant]
+The state is at approve gate. Now resume with approve as u-9002 with kb_owner role.
+
+Note the earlier hang. Let's try now with warmup fix.
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; $sw=[Diagnostics.Stopwatch]::StartNew(); .\\.venv\\Scripts\\python.exe -m scripts.run_graph resume --thread t-pub2 --user u-9002 --role approver --role kb_owner --approve 2>&1 | Select-Object -Last 35; \"[elapsed] $($sw.Elapsed.TotalSeconds)s\"","description":"Resume publish approval and write to Milvus","timeoutMs":240000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+[完成]
+  intent    : action
+  gate      : approve
+  via       : mcp_ok
+
+[回复]
+已发布知识文章（kb-1793966317360），审批人：u-9002。
+现在全员都能在知识库里搜到这篇，后续同类问题会直接引用它。
+
+[引用]
+  [1] 星澜科技 多租户与数据隔离规范 · 第 3 章 知识库与检索隔离 · 3.1 知识库归属  score=0.0328
+  [2] 星澜科技 多租户与数据隔离规范 · 第 3 章 知识库与检索隔离 · 3.2 检索与引用  score=0.0315
+  [3] 星澜科技 财务报销与开票管理制度 · 第 1 章 总则 · 1.1 目的与适用范围  score=0.0294
+[elapsed] 16.2396848s
+[stderr]
+.\.venv\Scripts\python.exe : [11/06/26 19:58:27] INFO     Starting MCP server               transport.py:241
+所在位置 行:1 字符: 201
++ ... StartNew(); .\.venv\Scripts\python.exe -m scripts.run_graph resume -- ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([11/06/26 19:58...ransport.py:241:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+                             'smartdesk-ticket' with transport                 
+                             'stdio'                                           
+[11/06/26 19:58:29] INFO     Starting MCP server               transport.py:241
+                             'smartdesk-ticket' with transport                 
+                             'stdio'                                           
+[11/06/26 19:58:31] INFO     Starting MCP server               transport.py:241
+                             'smartdesk-ticket' with transport                 
+                             'stdio'                                           
+[11/06/26 19:58:32] INFO     Starting MCP server               transport.py:241
+                             'smartdesk-ticket' with transport                 
+                             'stdio'                                           
+[11/06/26 19:58:35] INFO     Starting MCP server               transport.py:241
+                             'smartdesk-kb' with transport                     
+                             'stdio'                                           
+[11/06/26 19:58:37] INFO     Starting MCP server               transport.py:241
+                             'smartdesk-kb' with transport                     
+                             'stdio'                                           
+
+
+[assistant]
+E2E publish works now. 16.2s total but that includes several MCP subprocess spawns. Let me verify the article exists in Milvus and then check search.
+
+Wait — there's an issue. The kb tool calls spawn a new subprocess each call (~2s each). Total 16s. That's slow but acceptable.
+
+Let me verify the row in Milvus and check it's searchable, then clean up test data.
+
+Actually, more importantly: I should think about whether the warmup is the right fix, or whether there's a deeper problem. The real issue: each `call_tool` in mcp_client spawns a fresh stdio subprocess (get_tools → new session). That's why 4-8s per call. That's a design wart worth noting: MCP client creates a new connection per tool call. Let me check mcp_client.py to see.
+
+Actually, that's a performance point, not correctness. But the warmup adds ~1s per spawn. With ~9 tool calls in some flows, that's ~9s extra. Hmm.
+
+Let me look at mcp_client to understand the connection model.
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\backend\\app\\agents\\tools\\mcp_client.py"}
+
+[tool • read]
+<path>D:\zuixin\backend\app\agents\tools\mcp_client.py</path>
+<type>file</type>
+<content>
+1: """MCP 客户端：一个 MultiServerMCPClient 管两个 server（工单 / 知识库）。
+2: 
+3: 设计要点：
+4: - `MultiServerMCPClient({"ticket": {...}, "kb": {...}})` 一次装配多个独立 MCP server；
+5: - stdio 连接需要 transport/command/args/env/cwd 五项；
+6: - 工具是异步的，必须 `await tool.ainvoke(...)`，所以这里用一个同步门面 `call_tool()` 包住。
+7: 
+8: 传输降级：沙箱/受限环境禁止起子进程时，
+9: 自动切到进程内模式（`fastmcp.Client(server.mcp)`）——协议一样、工具实现是同一份代码。
+10: """
+11: 
+12: from __future__ import annotations
+13: 
+14: import asyncio
+15: import importlib
+16: import json
+17: import logging
+18: import os
+19: import sys
+20: from concurrent.futures import ThreadPoolExecutor
+21: from pathlib import Path
+22: from typing import Any
+23: 
+24: from langchain_mcp_adapters.client import MultiServerMCPClient
+25: 
+26: logger = logging.getLogger(__name__)
+27: 
+28: ROOT_DIR = Path(__file__).resolve().parents[4]
+29: SERVERS: dict[str, dict[str, Any]] = {
+30:     "ticket": {
+31:         "script": ROOT_DIR / "backend" / "app" / "mcp" / "servers" / "ticket_server.py",
+32:         "module": "backend.app.mcp.servers.ticket_server",
+33:         "mcp_attr": "ticket_mcp",
+34:     },
+35:     "kb": {
+36:         "script": ROOT_DIR / "backend" / "app" / "mcp" / "servers" / "kb_server.py",
+37:         "module": "backend.app.mcp.servers.kb_server",
+38:         "mcp_attr": "kb_mcp",
+39:     },
+40: }
+41: 
+42: # 工具中文名（CLI 的 tools 子命令与前端展示共用）。
+43: # 注意：风险等级不在这里——唯一真相在 nodes/plan_action.py 的 RISK_BY_OP / compute_risk，
+44: # 因为风险会随参数升级（close_ticket(notify_reporter=True) 才是不可逆），静态表记不住。
+45: TOOL_CATALOG = {
+46:     "query_ticket": {"label": "查工单"},
+47:     "list_tickets": {"label": "列工单"},
+48:     "create_ticket": {"label": "建工单"},
+49:     "update_ticket": {"label": "改工单"},
+50:     "close_ticket": {"label": "关工单"},
+51:     "search_kb": {"label": "检索知识库"},
+52:     "publish_kb_article": {"label": "发布知识文章"},
+53:     "save_approval": {"label": "审批留痕"},
+54:     "list_approvals": {"label": "审批中心"},
+55: }
+56: 
+57: _KB_TOOLS = {"search_kb", "publish_kb_article"}
+58: # 治理类工具（审批留痕/查询）：不进 plan_action 的 op 枚举，风险由服务端判，不参与业务风险分级
+59: _GOVERNANCE_TOOLS = {"save_approval", "list_approvals"}
+60: 
+61: _TRANSPORT_MODE: str | None = os.environ.get("MCP_TRANSPORT", "").strip() or None  # None=自动
+62: _CLIENT: MultiServerMCPClient | None = None
+63: 
+64: 
+65: def transport_mode() -> str:
+66:     return _TRANSPORT_MODE or "auto"
+67: 
+68: 
+69: def transport_info() -> dict[str, Any]:
+70:     return {
+71:         "mode": transport_mode(),
+72:         "python": sys.executable,
+73:         "servers": {name: str(cfg["script"]) for name, cfg in SERVERS.items()},
+74:         "hint": "stdio=独立进程；memory=进程内调用同一份 server 代码",
+75:     }
+76: 
+77: 
+78: def _switch_to_memory(reason: str) -> None:
+79:     global _TRANSPORT_MODE, _CLIENT
+80:     if _TRANSPORT_MODE == "memory":
+81:         return
+82:     logger.warning("stdio 不可用（%s），自动切换进程内模式", reason)
+83:     _TRANSPORT_MODE = "memory"
+84:     _CLIENT = None
+85: 
+86: 
+87: def _connection_spec(server: str) -> dict[str, Any]:
+88:     env = {
+89:         "PYTHONUTF8": "1",
+90:         "PYTHONIOENCODING": "utf-8",
+91:         "TICKET_DB_PATH": str(ROOT_DIR / ".data" / "tickets.sqlite"),
+92:     }
+93:     return {
+94:         "transport": "stdio",
+95:         "command": sys.executable,
+96:         "args": [str(SERVERS[server]["script"])],
+97:         "cwd": str(ROOT_DIR),
+98:         "env": env,
+99:     }
+100: 
+101: 
+102: def get_client() -> MultiServerMCPClient:
+103:     """进程内单例：一个客户端同时管理 ticket 与 kb 两个 MCP server。"""
+104:     global _CLIENT
+105:     if _CLIENT is None:
+106:         _CLIENT = MultiServerMCPClient({name: _connection_spec(name) for name in SERVERS})
+107:     return _CLIENT
+108: 
+109: 
+110: def _is_permission_error(exc: BaseException) -> bool:
+111:     """递归找 PermissionError / WinError 5（anyio 会把它们包进 ExceptionGroup）。"""
+112:     seen: set[int] = set()
+113:     stack: list[BaseException] = [exc]
+114:     while stack:
+115:         current = stack.pop()
+116:         if id(current) in seen:
+117:             continue
+118:         seen.add(id(current))
+119:         if isinstance(current, PermissionError):
+120:             return True
+121:         if getattr(current, "winerror", None) == 5:
+122:             return True
+123:         for attr in ("exceptions", "exceptions_", "__cause__", "__context__"):
+124:             value = getattr(current, attr, None)
+125:             if isinstance(value, BaseException):
+126:                 stack.append(value)
+127:             elif isinstance(value, (list, tuple)):
+128:                 stack.extend(item for item in value if isinstance(item, BaseException))
+129:     return False
+130: 
+131: 
+132: def _text_of(item: Any) -> str:
+133:     """从单个内容块里取文本（兼容 str / dict 块 / 带 text 属性的对象）。"""
+134:     if isinstance(item, str):
+135:         return item
+136:     if isinstance(item, dict):
+137:         return str(item.get("text") or "")
+138:     return str(getattr(item, "text", "") or "")
+139: 
+140: 
+141: def _parse_text(result: Any) -> dict[str, Any]:
+142:     """把 MCP 返回的文本 JSON 解析成 dict（两个传输都返回 {"ok": ...} 文本）。
+143: 
+144:     兼容三种形状：ToolMessage、裸的 list[{"type": "text", "text": ...}]、以及直接返回的 dict。
+145:     不同版本的 langchain-mcp-adapters 会在这三种之间变化，这里统一兜住。
+146:     """
+147:     if isinstance(result, dict) and "ok" in result:
+148:         return result
+149:     content = getattr(result, "content", None)
+150:     blocks = content if content is not None else result
+151:     for block in blocks if isinstance(blocks, (list, tuple)) else [blocks]:
+152:         text = _text_of(block)
+153:         if not text:
+154:             continue
+155:         try:
+156:             data = json.loads(text)
+157:         except json.JSONDecodeError:
+158:             return {"ok": False, "error": text}
+159:         if isinstance(data, dict):
+160:             return data
+161:         return {"ok": False, "error": f"工具返回的不是对象：{data!r}"}
+162:     for attr in ("data", "structured_content"):
+163:         value = getattr(result, attr, None)
+164:         if isinstance(value, dict):
+165:             return value
+166:     return {"ok": False, "error": f"无法解析的工具返回：{result!r}"}
+167: 
+168: 
+169: def _server_module(server: str):
+170:     return importlib.import_module(SERVERS[server]["module"])
+171: 
+172: 
+173: def _call_stdio(server: str, name: str, args: dict[str, Any]) -> dict[str, Any]:
+174:     async def run() -> dict[str, Any]:
+175:         tools = await get_client().get_tools(server_name=server)
+176:         tool = next((item for item in tools if item.name == name), None)
+177:         if tool is None:
+178:             raise LookupError(f"{server} server 上没有工具 {name}")
+179:         return _parse_text(await tool.ainvoke(args))
+180: 
+181:     return asyncio.run(run())
+182: 
+183: 
+184: def _call_memory(server: str, name: str, args: dict[str, Any]) -> dict[str, Any]:
+185:     from fastmcp import Client
+186: 
+187:     async def run() -> dict[str, Any]:
+188:         mcp_instance = getattr(_server_module(server), SERVERS[server]["mcp_attr"])
+189:         async with Client(mcp_instance) as client:
+190:             result = await client.call_tool(name, args)
+191:         return _parse_text(result)
+192: 
+193:     return asyncio.run(run())
+194: 
+195: 
+196: def _run_in_thread(factory):
+197:     with ThreadPoolExecutor(max_workers=1) as pool:
+198:         return pool.submit(factory).result()
+199: 
+200: 
+201: def _invoke(fn, server: str, name: str, payload: dict[str, Any]) -> dict[str, Any]:
+202:     """在独立线程里跑一次异步调用（节点是同步函数，不能直接 await）。"""
+203:     return _run_in_thread(lambda: fn(server, name, payload))
+204: 
+205: 
+206: def call_tool(server: str, name: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+207:     """同步调用一个 MCP 工具；stdio 不可用时自动降级为进程内模式。"""
+208:     if server not in SERVERS:
+209:         return {"ok": False, "error": f"未知 server：{server}"}
+210:     payload = dict(args or {})
+211: 
+212:     if _TRANSPORT_MODE != "memory":
+213:         try:
+214:             return _invoke(_call_stdio, server, name, payload)
+215:         except Exception as exc:  # noqa: BLE001
+216:             if not _is_permission_error(exc):
+217:                 return {"ok": False, "error": f"调用 {server}.{name} 失败：{exc}"}
+218:             _switch_to_memory(str(exc))
+219: 
+220:     try:
+221:         return _invoke(_call_memory, server, name, payload)
+222:     except Exception as exc:  # noqa: BLE001
+223:         return {"ok": False, "error": f"调用 {server}.{name} 失败：{exc}"}
+224: 
+225: 
+226: def tool_catalog() -> list[dict[str, Any]]:
+227:     """列出两个 server 上的工具（名/中文名/读写/风险）。
+228: 
+229:     风险从 `nodes/plan_action.py` 的 RISK_BY_OP 取，全项目只保留这一份风险表。
+230:     """
+231:     from ..nodes.plan_action import RISK_BY_OP  # 延迟导入，避免 tools ↔ nodes 循环依赖
+232: 
+233:     items: list[dict[str, Any]] = []
+234:     for name, meta in TOOL_CATALOG.items():
+235:         server = "kb" if name in _KB_TOOLS else "ticket"
+236:         risk = "governance" if name in _GOVERNANCE_TOOLS else RISK_BY_OP.get(name, "write_reversible")
+237:         items.append({"server": server, "name": name, "risk": risk, **meta})
+238:     return items
+239: 
+240: 
+241: def reset() -> None:
+242:     """重置客户端（切换传输 / 测试用）。"""
+243:     global _CLIENT, _TRANSPORT_MODE
+244:     _CLIENT = None
+245:     _TRANSPORT_MODE = None
+
+(End of file - total 245 lines)
+</content>
+
+[assistant]
+Now I see the structure. `_call_stdio` opens a new session per call (get_tools creates new session). That's why each call takes seconds. That's a known inefficiency.
+
+Now: E2E publish works. Let me verify the article is searchable, then clean up:
+
+1. Milvus probe rows: `__tmp_probe2__`~`__tmp_probe6__`, plus the new `会议室预约制度` article created by E2E test (kb-1793966317360), and possibly others created by earlier probes (`__tmp_status_probe__` already deleted).
+2. `t-pub` and `t-pub2` checkpoints + approvals rows.
+3. `.tmp_*` files.
+
+But wait — should I also verify the search picks up the new article? Quick check via search. Then delete all probe articles.
+
+Let me list Milvus titles to know exactly what to delete.
+
+Also important: should I keep the warmup fix? Yes.
+
+Another consideration: the ~4-8s per kb tool call. Before the fix, kb tools were completely broken. Now they work at 4-8s. Could I reduce overhead? The main cost is that `_call_stdio` creates a new session each call (spawning a new subprocess). A better design would keep a persistent session. But that's a bigger refactor of mcp_client. Given the user's goal (resume project), maybe worth it? Hmm — for the graph, `kb` tools are used only in `execute_action` (publish) and `gather_evidence` uses `knowledge.search` directly (not MCP). So 4-8s once per publish is fine. But `search_kb` MCP tool would be used if... let me check: does anything call `kb_tools.search_kb`? gather_evidence uses knowledge.search directly. So search_kb MCP tool is only for external clients/demo. OK.
+
+But hold on — the ~2s warmup per subprocess spawn adds latency to every kb call. Alternative: keep warmup but also make the import lighter? No.
+
+Actually, is there a cheaper fix that doesn't cost 2s per spawn? Options:
+- Preload numpy/pymilvus in the parent and pass... no.
+- Use `memory` transport for kb? No, defeats the MCP demo point.
+- Keep warmup. It's honest and documented: "stdio 子进程启动时预热 1 秒".
+
+Actually, let me measure: is the warmup 1s or 2s? From the log: "Starting MCP server" at 19:58:35, and calls took ~2s each. Before fix, health never returned. The pure import time when warm... `.tmp_probe_thread.py` C test (warm then thread) 0.7s. So import ~0.7-1s+.
+
+I think acceptable. But I should mention it as a known cost.
+
+Actually — better: I could avoid the per-call session spawning by caching tools. Let me check how langchain_mcp_adapters' `get_tools` works — it opens a session, lists tools, returns tools that each open their own session per invoke. So each `ainvoke` spawns a new subprocess. That's ~2-3s each regardless. So publish = 2 spawns (list + invoke) ≈ 5-8s.
+
+Could optimize by using `client.session()` persistent. But that's a real refactor with lifecycle concerns (event loop per call via asyncio.run).
+
+Given time, I'll note it as a known cost in docs? Hmm, the user cares about resume quality. 4-8s for a publish is acceptable for a demo.
+
+Let me now:
+1. Verify new article searchable (quick).
+2. Delete probe articles from Milvus.
+3. Clean approvals for t-pub/t-pub2 + checkpoints.
+4. Delete .tmp files.
+5. Run compileall + eval_rag final check? eval_rag unchanged by this fix (only kb_server main). Actually the warmup change doesn't affect eval. But run `run_graph tools` to confirm 9 tools still fine.
+6. Update 讲解卡/docs if they describe kb_server? Maybe add a note about warmup. Let me check 讲解卡 mentions kb_server line.
+
+Let me first look at what articles exist in Milvus to clean precisely.
+
+[assistant • write]
+{"content":"\"\"\"临时：列出 Milvus 里的文章标题，便于清理探针行。\"\"\"\n\nfrom collections import Counter\n\nfrom backend.app.agents.rag import vector_store\n\nclient = vector_store.get_client()\nrows = client.query(\n    collection_name=vector_store.COLLECTION,\n    filter='tenant_id == \"tenant-demo\"',\n    output_fields=[\"title\", \"doc_id\", \"doc_status\"],\n    limit=200,\n)\ntitles = Counter(row[\"title\"] for row in rows)\nprint(\"total rows:\", len(rows))\nfor title, count in titles.most_common():\n    print(f\"  {count:>3}  {title}\")\nprobe = [r for r in rows if str(r[\"title\"]).startswith(\"__tmp\") or r[\"title\"] == \"会议室预约制度\"]\nprint(\"probe rows:\", [(r[\"title\"], r[\"doc_id\"]) for r in probe])\n","file_path":"D:\\zuixin\\.tmp_list_kb.py"}
+
+[tool • write]
+<path>D:\zuixin\.tmp_list_kb.py</path>
+<type>file</type>
+<content>
+Created file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe .tmp_list_kb.py 2>&1 | Select-Object -Last 30","description":"List Milvus article titles for cleanup","timeoutMs":120000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+[stderr]
+.\.venv\Scripts\python.exe : Traceback (most recent call last):
+所在位置 行:1 字符: 160
++ ... DING="utf-8"; .\.venv\Scripts\python.exe .tmp_list_kb.py 2>&1 | Selec ...
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "D:\zuixin\.tmp_list_kb.py", line 9, in <module>
+    collection_name=vector_store.COLLECTION,
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'backend.app.agents.rag.vector_store' has no attribute 'COLLECTION'
+[exit code: 1]
+
+[assistant]
+
+
+[assistant • grep]
+{"path":"D:\\zuixin\\backend\\app\\agents\\rag\\vector_store.py","pattern":"^(COLLECTION|_COLLECTION|def get_client|def _collection)"}
+
+[tool • grep]
+Found 1 match
+
+backend\app\agents\rag\vector_store.py
+Line 61: def get_client() -> MilvusClient:
+
+[assistant]
+
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\backend\\app\\agents\\rag\\vector_store.py","limit":40,"offset":1}
+
+[tool • read]
+<path>D:\zuixin\backend\app\agents\rag\vector_store.py</path>
+<type>file</type>
+<content>
+1: """Milvus 数据层：检索/写入全部走 pymilvus 官方封装，不自己算分。
+2: 
+3: 核心设计：
+4: - Schema：dim=1024 的 FLOAT_VECTOR（稠密）+ SPARSE_FLOAT_VECTOR（稀疏）
+5: - 内置 BM25：Function(function_type=FunctionType.BM25)，由 Milvus 服务端算稀疏向量
+6: - 索引：dense = AUTOINDEX + COSINE；sparse = SPARSE_INVERTED_INDEX + BM25
+7: - 混合检索：client.hybrid_search(reqs=[...], ranker=RRFRanker(k=60))
+8: - 标量过滤：tenant_id == "..."，多租户隔离靠 filter 而不是靠多个 collection
+9: 
+10: 为什么直接用 pymilvus 原生 API 而不是 langchain_milvus 封装：
+11: 原生 MilvusClient 能直接调用服务端内置 BM25 Function 与双路 AnnSearchRequest + RRFRanker，
+12: 链路清晰透明，避免高层封装隐藏混合检索参数。
+13: """
+14: 
+15: from __future__ import annotations
+16: 
+17: import hashlib
+18: import logging
+19: import time
+20: from typing import Any
+21: 
+22: from pymilvus import (
+23:     AnnSearchRequest,
+24:     DataType,
+25:     Function,
+26:     FunctionType,
+27:     MilvusClient,
+28:     RRFRanker,
+29: )
+30: 
+31: from ..settings import settings
+32: from .embedding import get_embedder
+33: from .splitter import Chunk, make_citation
+34: 
+35: logger = logging.getLogger(__name__)
+36: 
+37: DENSE_FIELD = "dense"
+38: SPARSE_FIELD = "sparse"
+39: TEXT_FIELD = "content"
+40: BM25_FUNCTION = "content_bm25"
+
+(Showing lines 1-40 of 339. Use offset=41 to continue.)
+</content>
+
+[assistant]
+
+
+[assistant • grep]
+{"path":"D:\\zuixin\\backend\\app\\agents\\rag\\vector_store.py","pattern":"collection_name=|COLLECTION|settings\\.vectordb"}
+
+[tool • grep]
+Found 4 matches
+
+backend\app\agents\rag\vector_store.py
+Line 156:         collection_name=name, schema=schema, index_params=index_params
+Line 214:     client.upsert(collection_name=settings.milvus_collection, data=rows)
+Line 281:         collection_name=settings.milvus_collection,
+Line 322:     client.upsert(collection_name=settings.milvus_collection, data=[row])
+
+[assistant]
+
+
+[assistant • write]
+{"content":"\"\"\"临时：列出 Milvus 里的文章标题，便于清理探针行。\"\"\"\n\nfrom collections import Counter\n\nfrom backend.app.agents.rag import vector_store\nfrom backend.app.agents.settings import settings\n\nclient = vector_store.get_client()\nrows = client.query(\n    collection_name=settings.milvus_collection,\n    filter='tenant_id == \"tenant-demo\"',\n    output_fields=[\"title\", \"doc_id\", \"doc_status\"],\n    limit=500,\n)\nprint(\"total rows:\", len(rows))\nfor title, count in Counter(r[\"title\"] for r in rows).most_common():\n    print(f\"  {count:>3}  {title}\")\nprint(\"probe:\", [(r[\"title\"], r[\"doc_id\"]) for r in rows if str(r[\"title\"]).startswith(\"__tmp\")])\n","file_path":"D:\\zuixin\\.tmp_list_kb.py"}
+
+[tool • write]
+<path>D:\zuixin\.tmp_list_kb.py</path>
+<type>file</type>
+<content>
+Updated file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe .tmp_list_kb.py 2>&1 | Select-Object -Last 30","description":"List Milvus article titles","timeoutMs":120000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+total rows: 101
+   18  星澜科技 员工手册
+   15  星澜科技 财务报销与开票管理制度
+   14  星澜科技 客户订单退款与售后规则
+   14  星澜科技 账号与权限管理办法
+   13  星澜科技 多租户与数据隔离规范
+   12  星澜科技 开放平台 API 限流与配额说明
+   11  星澜科技 IT 服务级别与工单处理规范
+    1  会议室预约制度
+    1  __tmp_probe6__
+    1  __tmp_probe4__
+    1  __tmp_probe3__
+probe: [('__tmp_probe6__', 'kb-1793966216707'), ('__tmp_probe4__', 'kb-1793965422445'), ('__tmp_probe3__', 'kb-1793965347990')]
+
+
+[assistant]
+101 rows = 97 original + 4 test articles (`会议室预约制度` from E2E publish test, `__tmp_probe6__`, `__tmp_probe4__`, `__tmp_probe3__`).
+
+Wait, also `__tmp_probe2__`, `__tmp_probe5__`? Not present. OK.
+
+Now clean up: delete these 4 articles. Then clean approvals for t-pub/t-pub2 and checkpoints.
+
+Actually — hold on. Should I keep `会议室预约制度`? It's a test artifact from E2E verification, not part of the demo dataset. Delete it.
+
+Let me delete by doc_id.
+
+[assistant • write]
+{"content":"\"\"\"临时：清理探针写入的知识文章。\"\"\"\n\nfrom backend.app.agents.rag import vector_store\nfrom backend.app.agents.settings import settings\n\nPROBE_DOC_IDS = [\n    \"kb-1793966216707\",  # __tmp_probe6__\n    \"kb-1793965422445\",  # __tmp_probe4__\n    \"kb-1793965347990\",  # __tmp_probe3__\n    \"kb-1793966317360\",  # 会议室预约制度（E2E 验收写的）\n]\n\nclient = vector_store.get_client()\nfor doc_id in PROBE_DOC_IDS:\n    result = client.delete(collection_name=settings.milvus_collection, ids=[doc_id])\n    print(doc_id, \"->\", result)\n\nremaining = client.query(\n    collection_name=settings.milvus_collection,\n    filter='tenant_id == \"tenant-demo\"',\n    output_fields=[\"doc_id\"],\n    limit=500,\n)\nprint(\"remaining rows:\", len(remaining))\n","file_path":"D:\\zuixin\\.tmp_clean_kb.py"}
+
+[tool • write]
+<path>D:\zuixin\.tmp_clean_kb.py</path>
+<type>file</type>
+<content>
+Created file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe .tmp_clean_kb.py 2>&1 | Select-Object -Last 15","description":"Delete probe articles from Milvus","timeoutMs":120000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+[stderr]
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\zuixin\.venv\Lib\site-packages\pymilvus\decorators.py", line 565, in handler
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\zuixin\.venv\Lib\site-packages\pymilvus\decorators.py", line 456, in handler
+    raise e from e
+  File "D:\zuixin\.venv\Lib\site-packages\pymilvus\decorators.py", line 419, in handler
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\zuixin\.venv\Lib\site-packages\pymilvus\client\grpc_handler.py", line 1164, in delete
+    check_status(response.status)
+  File "D:\zuixin\.venv\Lib\site-packages\pymilvus\client\utils.py", line 77, in check_status
+    raise MilvusException.from_status(status)
+pymilvus.exceptions.MilvusException: <MilvusException: (code=1100, message=failed to create delete plan: cannot parse e
+xpression: pk in [kb-1793966216707], error: field kb not exist: invalid parameter)>
+[exit code: 1]
+
+[assistant]
+The `ids=[doc_id]` was interpreted as expression (positional arg is `expr`). Need keyword args: `client.delete(collection_name=..., ids=[...])` — pymilvus MilvusClient.delete signature: `delete(collection_name, ids=None, timeout=None, filter="", partition_name="")`. Passing keyword should work... it did pass ids= but perhaps this version's signature is `delete(collection_name, ids, timeout)` where second positional is filter. Let me check: the error says "cannot parse expression: pk in [kb-...]" — so it treated ids as filter expression maybe converting to "pk in [...]" without quotes. Because doc_id field type is VARCHAR but ids are given as list of str... hmm it built `pk in [kb-...]` without quotes.
+
+Maybe the primary key field is `doc_id` and pymilvus builds expr from ids using str() without quotes. Better use filter expression: `filter='doc_id in [...]'` with quoted strings.
+
+Let me just use filter with quoted strings.
+
+[assistant • write]
+{"content":"\"\"\"临时：清理探针写入的知识文章（用 filter 表达式删，避免 ids 被当成主键整型）。\"\"\"\n\nfrom backend.app.agents.rag import vector_store\nfrom backend.app.agents.settings import settings\n\nclient = vector_store.get_client()\n\ntitles = [\"__tmp_probe6__\", \"__tmp_probe4__\", \"__tmp_probe3__\", \"会议室预约制度\"]\nfor title in titles:\n    result = client.delete(\n        collection_name=settings.milvus_collection,\n        filter=f'title == \"{title}\"',\n    )\n    print(f\"{title} -> {result}\")\n\nremaining = client.query(\n    collection_name=settings.milvus_collection,\n    filter='tenant_id == \"tenant-demo\"',\n    output_fields=[\"doc_id\"],\n    limit=500,\n)\nprint(\"remaining rows:\", len(remaining))\n","file_path":"D:\\zuixin\\.tmp_clean_kb.py"}
+
+[tool • write]
+<path>D:\zuixin\.tmp_clean_kb.py</path>
+<type>file</type>
+<content>
+Updated file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe .tmp_clean_kb.py 2>&1 | Select-Object -Last 15","description":"Delete probe articles via filter expression","timeoutMs":120000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+__tmp_probe6__ -> {'delete_count': 1}
+__tmp_probe4__ -> {'delete_count': 1}
+__tmp_probe3__ -> {'delete_count': 1}
+会议室预约制度 -> {'delete_count': 1}
+remaining rows: 98
+
+
+[assistant]
+remaining rows: 98, but original was 97. Hmm. Earlier `health` reported rows: 99 (after we had written probe rows). Then before that it was 97. Now after deleting 4, we have 98. That means there were 102 total? Wait: the list showed 101 rows on tenant-demo filter. Hmm, and health said 99 rows.
+
+Hmm wait — earlier eval and listing showed 97 published. Then we did the `__tmp_status_probe__` (title `__tmp_status_probe__`) which was deleted → 97. Then probe3, probe4, probe6 = 3 added → 100. health said rows: 99 at one point (maybe count lag).
+
+Now list showed 101 (97 + 3 probes + 会议室预约制度 = 101). Yes! 97 + 4 = 101. After deleting 4 → 97 expected, but got 98. So one extra row appeared. Possibly `__tmp_probe5__`? No, list didn't show it. Maybe the E2E publish wrote 2 rows? No, `会议室预约制度` count was 1.
+
+Hmm, maybe the row count from `query(limit=500)` = 98 because one row was added between listing and cleanup... Actually the `resume` E2E publish was before listing? Let me re-check chronology:
+1. probe6 publish via .tmp_verify_kb.py → 4 rows added since 97? Actually before verify, we had 97 + probe3 + probe4 = 99 (health said 99 at 19:56:40 — that matches 97+2=99, because probe6 hadn't been written yet at that time... wait health was called before publish in the same script; so at that moment rows=99 = 97+probe3+probe4? Then probe6 added → 100. Then E2E publish added 会议室预约制度 → 101. Listing showed 101. ✓.
+
+After deleting 4 → 97. But we got 98. So there's one extra row somewhere — maybe a row with a probe title that wasn't matched, e.g. `__tmp_probe2__`/`__tmp_probe5__` never created. Or maybe one of the deletes had delete_count 1 but another row with same title remained? Titles were unique.
+
+Hmm, maybe the original count wasn't 97. Let me check: earlier report said "rows: 97 Counter({'published': 97})" before probe3/probe4. Then probe3 wrote 1 → 98, probe4 wrote 1 → 99. That matches health = 99 in verify script after probe6? No wait...
+
+Let me recount: `.tmp_probe_handler.py` wrote kb-1793965347990 = `__tmp_probe3__`? The summary says "直接调 kb_server.publish_kb_article(owner, ...) 3 秒完成 → doc_id kb-1793965347990" — that was probe3? And probe4 = kb-1793965422445. So 97 + 2 = 99. Then verify wrote probe6 → 100. Then E2E → 101. ✓ list 101.
+
+Delete 4 → 97. But query says 98. Possibly Milvus delete is async-ish; or query counted before compaction? Delete should be immediate for query.
+
+Or maybe one extra article was created that we didn't see because the list capped at 500? No, 101 < 500.
+
+Hmm, maybe `会议室预约制度` had 2 rows? count showed 1.
+
+Could the `.tmp_verify_kb.py` publish real have been run twice? It ran once.
+
+Alternative: the earlier 97 count came from a query with default limit (maybe 100?) Hmm.
+
+Let me just verify by listing titles again to see counts. If everything is back to the 7 official docs summing to 97, fine. Let me recount the official docs: 18+15+14+14+13+12+11 = 97. ✓ So if the list now shows exactly those 7 titles summing to 98, something's off by one.
+
+Let me re-list.
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe .tmp_list_kb.py 2>&1 | Select-Object -Last 20","description":"Re-list Milvus titles after cleanup","timeoutMs":120000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+total rows: 97
+   18  星澜科技 员工手册
+   15  星澜科技 财务报销与开票管理制度
+   14  星澜科技 客户订单退款与售后规则
+   14  星澜科技 账号与权限管理办法
+   13  星澜科技 多租户与数据隔离规范
+   12  星澜科技 开放平台 API 限流与配额说明
+   11  星澜科技 IT 服务级别与工单处理规范
+probe: []
+
+
+[assistant]
+Now it's 97 — the 98 was a stale count (Milvus delete visibility lag). 
+
+Now clean up:
+1. approvals rows for t-pub / t-pub2, plus any test approvals.
+2. Checkpoints for t-pub, t-pub2 (postgres).
+3. .tmp_* files.
+
+Let me check the DB for approvals with thread_id LIKE 't-pub%' or others.
+
+Also I should check whether the ticket `TK-20261106-0008` etc. were already cleaned. And any tickets created during this round? The publish flow doesn't create tickets.
+
+Let me query sqlite.
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe -c \"import sqlite3; c=sqlite3.connect('.data/tickets.sqlite'); c.row_factory=sqlite3.Row; rows=c.execute('select id,op,target,status,thread_id,created_at from approvals order by id desc limit 12').fetchall(); [print(dict(r)) for r in rows]; print('total', c.execute('select count(*) from approvals').fetchone()[0])\"","description":"Inspect recent approvals rows","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+{'id': 83, 'op': 'publish_kb_article', 'target': '会议室预约制度', 'status': 'approved', 'thread_id': 't-pub2', 'created_at': '2026-11-06 19:58:08'}
+{'id': 82, 'op': 'publish_kb_article', 'target': '发票由销售在金蝶提交开票申请，财务复核后开具', 'status': 'approved', 'thread_id': 't-pub', 'created_at': '2026-11-06 19:32:34'}
+{'id': 76, 'op': 'create_ticket', 'target': 'VPN 客户端证书过期，影响 2 人', 'status': 'approved', 'thread_id': '', 'created_at': '2026-11-06 12:13:06'}
+{'id': 75, 'op': 'create_ticket', 'target': 'VPN 客户端证书过期，影响 2 人，需建单处理', 'status': 'approved', 'thread_id': '', 'created_at': '2026-11-06 11:49:37'}
+{'id': 74, 'op': 'create_ticket', 'target': '键盘进水，影响1人', 'status': 'pending', 'thread_id': '', 'created_at': '2026-11-06 10:49:51'}
+{'id': 73, 'op': 'create_ticket', 'target': '键盘失灵，影响1人', 'status': 'approved', 'thread_id': '', 'created_at': '2026-11-06 10:49:18'}
+{'id': 72, 'op': 'close_ticket', 'target': 'TK-20261106-0003', 'status': 'pending', 'thread_id': '', 'created_at': '2026-11-06 10:42:06'}
+{'id': 71, 'op': 'create_ticket', 'target': '网线松动，影响1人', 'status': 'pending', 'thread_id': '', 'created_at': '2026-11-06 10:41:53'}
+{'id': 70, 'op': 'create_ticket', 'target': '网线松动，影响1人', 'status': 'approved', 'thread_id': '', 'created_at': '2026-11-06 10:41:37'}
+{'id': 69, 'op': 'close_ticket', 'target': 'TK-20261106-0003', 'status': 'approved', 'thread_id': '', 'created_at': '2026-11-06 10:27:50'}
+{'id': 68, 'op': 'close_ticket', 'target': 'TK-20261106-0001', 'status': 'approved', 'thread_id': '', 'created_at': '2026-11-06 10:27:12'}
+{'id': 67, 'op': 'close_ticket', 'target': 'TK-20261106-0001', 'status': 'approved', 'thread_id': '', 'created_at': '2026-11-06 10:26:52'}
+total 75
+
+
+[assistant]
+75 approvals now = 73 + 2 (id 82, 83). Delete those 2 test rows.
+
+Also delete checkpoints for t-pub, t-pub2 in postgres. Let me use the same approach used earlier (probably a python script with psycopg or langgraph postgres saver). Simplest: use langgraph's PostgresSaver to delete thread checkpoints. Let me check how checkpoint.py is configured.
+
+Actually simpler: earlier rounds we cleaned checkpoints — how? Maybe by direct SQL. `.data/pg` is a docker volume, so psql via docker exec. Let me check docker compose service name.
+
+Alternatively, use the checkpoint module's saver: `from backend.app.agents.checkpoint import get_checkpointer` then `checkpointer.delete_thread("t-pub")`. Let me look.
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\backend\\app\\agents\\checkpoint.py"}
+
+[tool • read]
+<path>D:\zuixin\backend\app\agents\checkpoint.py</path>
+<type>file</type>
+<content>
+1: """Checkpointer：让中断（interrupt）真正"落盘"，进程重启还能恢复。
+2: 
+3: 设计要点：
+4: - 支持 PostgresSaver（生产持久化）与 SqliteSaver（本地无 PG 环境兜底）
+5: - 编译主图时注入 compile(checkpointer=...)，所有运行态与中断点按 thread_id 串联
+6: - PostgresSaver 优先，连不上就自动回退 SqliteSaver（打印一行警告）。
+7:   两者对外接口完全一致，graph.py 一行都不用改 —— 这就是 checkpointer 抽象的价值。
+8: """
+9: 
+10: from __future__ import annotations
+11: 
+12: import sqlite3
+13: from typing import Any
+14: 
+15: from langgraph.checkpoint.base import BaseCheckpointSaver
+16: 
+17: from .settings import ensure_data_dir, settings
+18: 
+19: _bundle: dict[str, Any] = {"saver": None, "conn": None, "backend": ""}
+20: 
+21: 
+22: def _init_postgres() -> None:
+23:     """连接 PG 并建表（checkpoints / checkpoint_blobs / checkpoint_writes / migrations）。
+24: 
+25:     关键点（踩坑记录）：
+26:     - 必须 autocommit=True，否则 PostgresSaver 的建表/写入会在事务里挂住；
+27:     - prepare_threshold=0 关闭 psycopg 的 prepared statement 缓存，
+28:       避免 checkpoint 频繁 DDL/长连接下出现 "prepared statement already exists"；
+29:     - row_factory=dict_row 让返回行是 dict（PostgresSaver 内部按下标取值也能用，
+30:       但官方 from_conn_string 就是这么设的，保持一致）。
+31:     """
+32:     import psycopg
+33:     from psycopg.rows import dict_row
+34: 
+35:     from langgraph.checkpoint.postgres import PostgresSaver
+36: 
+37:     conn = psycopg.connect(
+38:         settings.database_url,
+39:         autocommit=True,
+40:         prepare_threshold=0,
+41:         row_factory=dict_row,
+42:         connect_timeout=5,
+43:     )
+44:     saver = PostgresSaver(conn)
+45:     saver.setup()
+46:     _bundle.update(saver=saver, conn=conn, backend="postgres")
+47: 
+48: 
+49: def _init_sqlite() -> None:
+50:     from langgraph.checkpoint.sqlite import SqliteSaver
+51: 
+52:     ensure_data_dir()
+53:     conn = sqlite3.connect(str(settings.db_path), check_same_thread=False)
+54:     saver = SqliteSaver(conn)
+55:     saver.setup()
+56:     _bundle.update(saver=saver, conn=conn, backend="sqlite")
+57: 
+58: 
+59: def get_checkpointer() -> BaseCheckpointSaver:
+60:     """懒加载单例：同一进程共用一个连接。"""
+61:     if _bundle["saver"] is not None:
+62:         return _bundle["saver"]
+63: 
+64:     if settings.checkpoint_backend == "postgres":
+65:         try:
+66:             _init_postgres()
+67:         except Exception as exc:  # noqa: BLE001 - 演示项目：连不上就降级
+68:             print(
+69:                 f"[checkpoint] Postgres 不可用（{type(exc).__name__}: {exc}），"
+70:                 f"回退 SQLite: {settings.db_path}",
+71:                 flush=True,
+72:             )
+73:     if _bundle["saver"] is None:
+74:         _init_sqlite()
+75:     return _bundle["saver"]
+76: 
+77: 
+78: def checkpoint_backend_in_use() -> str:
+79:     """给 CLI / 健康检查显示当前真实生效的后端。"""
+80:     get_checkpointer()
+81:     return _bundle["backend"]
+82: 
+83: 
+84: def close_checkpointer() -> None:
+85:     conn = _bundle.get("conn")
+86:     if conn is not None:
+87:         try:
+88:             conn.close()
+89:         except Exception:  # pragma: no cover
+90:             pass
+91:     _bundle.update(saver=None, conn=None, backend="")
+92: 
+93: 
+94: def thread_config(thread_id: str) -> dict[str, Any]:
+95:     """所有 invoke / 恢复 / 查状态都靠这个 thread_id 串起来。"""
+96:     return {"configurable": {"thread_id": thread_id}}
+
+(End of file - total 96 lines)
+</content>
+
+[assistant]
+Now clean up: delete test approvals rows (82, 83) and checkpoints for t-pub, t-pub2 (and any others created this round: t-nolast, t-deny, t-chat, t-appr-1, t-appr-2, t-final, t-last, t-pub).
+
+Actually those earlier threads were created in the previous compression block (verification). Were they cleaned? The summary says approvals for `thr-test-1`/`t-appr-1`/`t-appr-2`/`web-approval-test`/`web-confirm-test` were deleted, and DB restored to 73 rows. But checkpoints for those threads may still exist. Not critical for the demo, but `scripts.run_graph state --thread t-appr-2` would still show a paused run → could confuse the user during demo. Better to clean checkpoints for all test threads.
+
+Let me write a script that deletes threads from PostgresSaver: `checkpointer.delete_thread(thread_id)`.
+
+Threads to delete: t-nolast, t-deny, t-chat, t-appr-1, t-appr-2, t-final, t-last, t-pub, t-pub2, thr-test-1, web-approval-test, web-confirm-test, web-chat-test, t1? Careful: `t1` is the default thread used by CLI default — maybe user demos with it. Let me delete only the test ones.
+
+Hmm, but were checkpoints already cleaned in the earlier round? Unknown. Deleting nonexistent threads is harmless.
+
+Also delete approvals rows 82, 83.
+
+Let me write the cleanup script.
+
+[assistant • write]
+{"content":"\"\"\"临时：清理本轮验证在 approvals / checkpoint 里留下的痕迹。\"\"\"\n\nimport sqlite3\n\nfrom backend.app.agents.checkpoint import close_checkpointer, get_checkpointer\n\nTHREADS = [\n    \"t-pub\",\n    \"t-pub2\",\n    \"t-nolast\",\n    \"t-deny\",\n    \"t-chat\",\n    \"t-appr-1\",\n    \"t-appr-2\",\n    \"t-final\",\n    \"t-last\",\n    \"thr-test-1\",\n    \"web-approval-test\",\n    \"web-confirm-test\",\n    \"web-chat-test\",\n]\n\nsaver = get_checkpointer()\nfor thread in THREADS:\n    try:\n        saver.delete_thread(thread)\n        print(f\"checkpoint {thread}: deleted\")\n    except Exception as exc:  # noqa: BLE001\n        print(f\"checkpoint {thread}: {type(exc).__name__}: {exc}\")\nclose_checkpointer()\n\nconn = sqlite3.connect(r\".data/tickets.sqlite\")\ncur = conn.execute(\"delete from approvals where thread_id like 't-pub%'\")\nprint(\"approvals deleted:\", cur.rowcount)\nconn.commit()\nprint(\"approvals total:\", conn.execute(\"select count(*) from approvals\").fetchone()[0])\nconn.close()\n","file_path":"D:\\zuixin\\.tmp_clean_state.py"}
+
+[tool • write]
+<path>D:\zuixin\.tmp_clean_state.py</path>
+<type>file</type>
+<content>
+Created file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe .tmp_clean_state.py 2>&1 | Select-Object -Last 25","description":"Delete test checkpoints and approvals","timeoutMs":120000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+checkpoint t-pub: deleted
+checkpoint t-pub2: deleted
+checkpoint t-nolast: deleted
+checkpoint t-deny: deleted
+checkpoint t-chat: deleted
+checkpoint t-appr-1: deleted
+checkpoint t-appr-2: deleted
+checkpoint t-final: deleted
+checkpoint t-last: deleted
+checkpoint thr-test-1: deleted
+checkpoint web-approval-test: deleted
+checkpoint web-confirm-test: deleted
+checkpoint web-chat-test: deleted
+approvals deleted: 2
+approvals total: 73
+
+
+[assistant]
+Now clean up temporary files. Let me list .tmp_* files first, then delete them.
+
+Also I should double check: the Milvus row count went back to 97 ✓, approvals back to 73 ✓.
+
+Then final verification: compileall, run_graph tools, eval_rag (quick), and maybe run_graph graph.
+
+Also update docs: `docs/讲解卡.md` may mention kb_server; should I add a note about warmup? Let me check the 讲解卡 content for kb_server line and any "已知边界". Adding a line explaining the warmup is valuable for the user's interview narrative ("为什么 kb_server 里有个 _warmup"). Let me grep.
+
+[assistant • pwsh]
+{"command":"Get-ChildItem -Filter \".tmp_*\" -Force | Select-Object Name, Length | Format-Table -AutoSize; \"--- kb_server refs in docs ---\"; Select-String -Path \"docs\\讲解卡.md\",\"README.md\" -Pattern \"kb_server|kb 服务|stdio\" | ForEach-Object { \"$($_.Filename):$($_.LineNumber): $($_.Line.Trim())\" }","description":"List temp files and kb_server doc references","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+Name                       Length
+----                       ------
+.tmp_clean_kb.py              723
+.tmp_clean_state.py           969
+.tmp_h.err                      0
+.tmp_h.log                    198
+.tmp_list_kb.py               657
+.tmp_pm.err                     0
+.tmp_pm.log                   590
+.tmp_probe.err               5720
+.tmp_probe.log                 57
+.tmp_probe_env.py            1415
+.tmp_probe_handler.py         636
+.tmp_probe_matrix.py         3335
+.tmp_probe_mcp.py             693
+.tmp_probe_modes.py          1064
+.tmp_probe_probe_server.py   1619
+.tmp_probe_raw.py            1875
+.tmp_probe_real.py           1808
+.tmp_probe_split.py          1131
+.tmp_probe_stdio.py          1023
+.tmp_probe_thread.py          900
+.tmp_probe_v2.py             1540
+.tmp_probe_warm.py           1485
+.tmp_ps.err                  3096
+.tmp_ps.log                    54
+.tmp_pub_test.py              448
+.tmp_resume.err               486
+.tmp_resume.log                 0
+.tmp_server_probe.py          786
+.tmp_server_probe2.py         538
+.tmp_server_warm.py           698
+.tmp_sp.err                  3504
+.tmp_sp.log                   289
+.tmp_verify_kb.py            1051
+.tmp_vk.err                  1944
+.tmp_vk.log                   626
+.tmp_wrap_run.py              268
+
+
+--- kb_server refs in docs ---
+讲解卡.md:73: | `mcp/servers/kb_server.py` | 知识 server（2 工具） | `search_kb` 给外部客户端复用；`publish_kb_article` 图内可达 |
+讲解卡.md:75: | `tools/mcp_client.py` | MCP 客户端 | `MultiServerMCPClient` 起 stdio 子进程；沙箱禁子进程时自动降级进程内调用 |
+README.md:45: mcp/servers/      ticket_server.py / kb_server.py / guard.py（鉴权）
+
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"Remove-Item \".tmp_*\" -Force -Recurse -ErrorAction SilentlyContinue; Get-ChildItem -Filter \".tmp_*\" -Force | Measure-Object | Select-Object -ExpandProperty Count","description":"Delete all temporary probe scripts and logs","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+4
+
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"Get-ChildItem -Filter \".tmp_*\" -Force | Select-Object Name; \"--- retry ---\"; Get-ChildItem -Filter \".tmp_*\" -Force | Where-Object { $_.PSIsContainer } | Select-Object Name","description":"Check remaining temp entries","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+Name       
+----       
+.tmp_ps.err
+.tmp_ps.log
+.tmp_sp.err
+.tmp_sp.log
+--- retry ---
+
+
+
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"Get-Process python -ErrorAction SilentlyContinue | Select-Object Id, StartTime | Format-Table -AutoSize; Remove-Item \".tmp_ps.*\",\".tmp_sp.*\" -Force -ErrorAction SilentlyContinue; Get-ChildItem -Filter \".tmp_*\" -Force | Measure-Object | Select-Object -ExpandProperty Count","description":"Kill leftover python processes and delete last temp logs","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+   Id StartTime         
+   -- ---------         
+  552 2026/11/6 19:46:15
+ 2368 2026/11/6 19:46:21
+ 3164 2026/11/6 19:44:50
+ 3408 2026/11/6 19:44:50
+ 6400 2026/11/6 19:44:53
+21232 2026/11/6 19:44:53
+23792 2026/11/6 19:46:21
+29680 2026/11/6 19:46:15
+
+
+4
+
+
+[assistant]
+Hmm, 4 remaining .tmp_* files still and 8 python processes from 19:44-19:46 — those are likely leftover stuck MCP server subprocesses from the hanging probes. I should kill them (they're our test artifacts, holding the log files open).
+
+But careful: are any of them legitimately running (e.g., uvicorn)? uvicorn was killed earlier. These started 19:44-19:46 which is during probing. Let me check their command lines before killing.
+
+[assistant • pwsh]
+{"command":"Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Select-Object ProcessId, @{n='cmd';e={$_.CommandLine.Substring(0,[Math]::Min(160,$_.CommandLine.Length))}} | Format-Table -Wrap -AutoSize","description":"Inspect leftover python command lines","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+ProcessId cmd                                                                                                          
+--------- ---                                                                                                          
+     3164 "D:\zuixin\.venv\Scripts\python.exe" -u .tmp_probe_stdio.py                                                  
+     3408 "C:\Users\25114\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\python.exe"  -u .tmp_probe_stdio.p
+          y                                                                                                            
+     6400 D:\zuixin\.venv\Scripts\python.exe D:\zuixin\backend\app\mcp\servers\kb_server.py                            
+    21232 "C:\Users\25114\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\python.exe"  D:\zuixin\backend\app
+          \mcp\servers\kb_server.py                                                                                    
+    29680 "D:\zuixin\.venv\Scripts\python.exe" -u .tmp_probe_split.py ticket:query_ticket kb:health                    
+      552 "C:\Users\25114\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\python.exe"  -u .tmp_probe_split.p
+          y ticket:query_ticket kb:health                                                                              
+     2368 D:\zuixin\.venv\Scripts\python.exe D:\zuixin\backend\app\mcp\servers\kb_server.py                            
+    23792 "C:\Users\25114\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\python.exe"  D:\zuixin\backend\app
+          \mcp\servers\kb_server.py                                                                                    
+
+
+
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $_.CommandLine -match 'tmp_probe|kb_server\\.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; \"killed $($_.ProcessId)\" }; Start-Sleep -Seconds 1; Remove-Item \".tmp_*\" -Force -ErrorAction SilentlyContinue; \"remaining tmp: \" + (Get-ChildItem -Filter \".tmp_*\" -Force | Measure-Object).Count","description":"Kill stuck probe processes and remove temp logs","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+killed 3164
+killed 3408
+killed 6400
+killed 21232
+killed 29680
+killed 552
+killed 2368
+killed 23792
+remaining tmp: 0
+
+
+[assistant]
+All temp files gone. Now let me do the final verification round:
+
+1. `compileall -q backend scripts` → exit 0
+2. `run_graph tools` → 9 tools
+3. `eval_rag` → unchanged metrics
+4. Maybe run a kb MCP call to confirm warmup works from fresh process (already verified: `.tmp_verify_kb.py` was before the comment re-edit, but code unchanged functionally). Let me do one quick health call via mcp_client to be sure the final file compiles and works.
+
+Then update docs: add a line in 讲解卡 about `_warmup` (good interview talking point) and maybe README 已知边界/踩坑.
+
+Let me check the 讲解卡 around line 73 for context, and see if there's a 踩坑 section.
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe -m compileall -q backend scripts; \"[compile exit] $LASTEXITCODE\"; .\\.venv\\Scripts\\python.exe -m scripts.run_graph tools 2>&1 | Select-Object -Last 14","description":"Compile all and list MCP tools","timeoutMs":180000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+[compile exit] 0
+  },
+  "hint": "stdio=独立进程；memory=进程内调用同一份 server 代码"
+}
+
+共 9 个工具：
+  [ticket] query_ticket           查工单      read
+  [ticket] list_tickets           列工单      read
+  [ticket] create_ticket          建工单      write_reversible
+  [ticket] update_ticket          改工单      write_reversible
+  [ticket] close_ticket           关工单      write_reversible
+  [kb] search_kb              检索知识库    read
+  [kb] publish_kb_article     发布知识文章   write_irreversible
+  [ticket] save_approval          审批留痕     governance
+  [ticket] list_approvals         审批中心     governance
+
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe -c \"from backend.app.agents.tools import mcp_client; print(mcp_client.call_tool('kb','health',{}))\" 2>&1 | Select-Object -Last 4; .\\.venv\\Scripts\\python.exe -m scripts.eval_rag --top-k 3 2>&1 | Select-Object -Last 3","description":"Smoke test kb health over stdio and rerun eval","timeoutMs":240000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+{'ok': True, 'server': 'kb', 'collection': 'smartdesk_kb', 'exists': True, 'rows': 101}
+{"retrieval": {"cases": 51, "top_k": 3, "recall@1": 0.8235, "recall@k": 0.9608, "mrr@k": 0.8922, "top1_keyword_rate": 0.9412, "latency_ms_avg": 241.2, "latency_ms_p95": 309.7}}
+report -> D:\zuixin\docs\eval\report.md
+[stderr]
+[11/06/26 20:00:15] INFO     Starting MCP server               transport.py:241
+                             'smartdesk-kb' with transport                     
+                             'stdio'                                           
+
+
+[assistant]
+Uh oh — `rows: 101`! But the query showed 97. That means the delete didn't fully take effect on the count? Or the `health` tool counts differently (num_entities may be stale, since Milvus num_entities includes deleted rows not yet compacted?). Actually `get_collection_stats` row_count can lag after deletes until compaction. So health reports 101 (stale stats), while query filters out deleted rows (97).
+
+Hmm, that's a real issue for the demo: `health` shows 101 rows but query shows 97. Actually before our probes, health said 97 — consistent. Now stale at 101.
+
+Milvus `get_collection_stats` returns `row_count` which is approximate/stale. Could force flush or use `query count(*)`? Alternative: health uses `client.get_collection_stats`. We could change health to use `query(output_fields=["count(*)"])` for accurate count. Hmm — is that worth changing? It's a nice detail: "num_entities 在删除后不立刻更新，health 用 count(*) 更准". But careful: modifying health is scope creep, though it makes the demo numbers consistent.
+
+Actually the count will eventually converge after Milvus compaction/flush. Alternatively I can call `client.flush(collection)` to persist and update stats. Let's try flush then re-check. If flush fixes it, no code change needed.
+
+Also eval_rag just rewrote docs/eval/report.md with new latency numbers (241.2 / 309.7 vs 241.6/304.0). Hmm — that regenerated the report with slightly different latency. Is that a problem? The report is a generated artifact; fine. But note the earlier report had same recall metrics. OK. Though it changes latency numbers on each run — acceptable, but it means git diff shows minor changes. Fine.
+
+Let me flush Milvus and re-check health.
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe -c \"from backend.app.agents.rag import vector_store; from backend.app.agents.settings import settings; c=vector_store.get_client(); print(c.flush(settings.milvus_collection)); import time; time.sleep(2); print(c.get_collection_stats(settings.milvus_collection)); print(len(c.query(collection_name=settings.milvus_collection, filter='tenant_id == \\\"tenant-demo\\\"', output_fields=['doc_id'], limit=500)))\" 2>&1 | Select-Object -Last 6","description":"Flush Milvus collection and compare row counts","timeoutMs":180000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+[stderr]
+.\.venv\Scripts\python.exe :   File "<string>", line 1
+所在位置 行:1 字符: 160
++ ... NG="utf-8"; .\.venv\Scripts\python.exe -c "from backend.app.agents.ra ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (  File "<string>", line 1:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    from backend.app.agents.rag import vector_store; from backend.app.agents.settings import settings; c=vector_store.g
+et_client(); print(c.flush(settings.milvus_collection)); import time; time.sleep(2); print(c.get_collection_stats(setti
+ngs.milvus_collection)); print(len(c.query(collection_name=settings.milvus_collection, filter='tenant_id == " tenant-de
+mo\',
+                                                                                                                       
+                                                                                                                       
+                                                                                              ^
+SyntaxError: unterminated string literal (detected at line 1)
+[exit code: 1]
+
+[assistant]
+
+
+[assistant • write]
+{"content":"\"\"\"临时：flush 后对比 num_entities 与真实行数。\"\"\"\n\nimport time\n\nfrom backend.app.agents.rag import vector_store\nfrom backend.app.agents.settings import settings\n\nclient = vector_store.get_client()\nprint(\"flush:\", client.flush(settings.milvus_collection))\ntime.sleep(2)\nprint(\"stats:\", client.get_collection_stats(settings.milvus_collection))\nrows = client.query(\n    collection_name=settings.milvus_collection,\n    filter='tenant_id == \"tenant-demo\"',\n    output_fields=[\"doc_id\"],\n    limit=500,\n)\nprint(\"real rows:\", len(rows))\ncount = client.query(\n    collection_name=settings.milvus_collection,\n    filter='tenant_id == \"tenant-demo\"',\n    output_fields=[\"count(*)\"],\n)\nprint(\"count(*):\", count)\n","file_path":"D:\\zuixin\\.tmp_rows.py"}
+
+[tool • write]
+<path>D:\zuixin\.tmp_rows.py</path>
+<type>file</type>
+<content>
+Created file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe .tmp_rows.py 2>&1 | Select-Object -Last 8","description":"Flush and compare Milvus row counts","timeoutMs":180000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+flush: None
+stats: {'row_count': 101}
+real rows: 97
+count(*): data: ["{'count(*)': 97}"], extra_info: {}
+
+
+[assistant]
+So `row_count` from `get_collection_stats` is stale (101), while `count(*)` query = 97. This is because the deletes are marked in a delete log; `num_entities`/`row_count` reflects inserted segments.
+
+Which does `kb_server.health` use? Probably `get_collection_stats`. For a demo, showing 101 while the KB has 97 chunks is a small inconsistency that could confuse. Better: health should use `count(*)` query for accuracy. That's a 2-line change with a good comment: "num_entities 会把已删除但未 compact 的行算进去，用 count(*) 拿真实可见行数".
+
+Let me check health implementation.
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\backend\\app\\mcp\\servers\\kb_server.py","limit":30,"offset":106}
+
+[tool • read]
+<path>D:\zuixin\backend\app\mcp\servers\kb_server.py</path>
+<type>file</type>
+<content>
+106:     content = (content or "").strip()
+107:     if not title:
+108:         return guard.deny("invalid_argument", "title 不能为空")
+109:     if not content:
+110:         return guard.deny("invalid_argument", "content 不能为空")
+111:     try:
+112:         result = _store().publish_article(
+113:             title=title,
+114:             content=content,
+115:             tags=tags or [],
+116:             change_note=change_note,
+117:             tenant_id=actor_data["tenant_id"],
+118:         )
+119:     except Exception as exc:
+120:         return guard.deny("unavailable", f"写入知识库失败：{exc}")
+121:     return _to_json({"ok": True, **result})
+122: 
+123: 
+124: @kb_mcp.tool()
+125: def health() -> str:
+126:     """服务健康检查（只读，不需要身份）。"""
+127:     try:
+128:         stats = _store().collection_stats()
+129:         return _to_json({"ok": True, "server": "kb", **stats})
+130:     except Exception as exc:
+131:         return _to_json({"ok": False, "server": "kb", "error": str(exc)})
+132: 
+133: 
+134: if __name__ == "__main__":
+135:     _warmup()
+
+(Showing lines 106-135 of 136. Use offset=136 to continue.)
+</content>
+
+[assistant]
+
+
+[assistant • grep]
+{"path":"D:\\zuixin\\backend\\app\\agents\\rag\\vector_store.py","pattern":"def collection_stats"}
+
+[tool • grep]
+Found 1 match
+
+backend\app\agents\rag\vector_store.py
+Line 221: def collection_stats() -> dict[str, Any]:
+
+[assistant]
+
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\backend\\app\\agents\\rag\\vector_store.py","limit":22,"offset":221}
+
+[tool • read]
+<path>D:\zuixin\backend\app\agents\rag\vector_store.py</path>
+<type>file</type>
+<content>
+221: def collection_stats() -> dict[str, Any]:
+222:     client = get_client()
+223:     name = settings.milvus_collection
+224:     if not client.has_collection(name):
+225:         return {"collection": name, "exists": False, "rows": 0}
+226:     stats = client.get_collection_stats(name)
+227:     return {"collection": name, "exists": True, "rows": int(stats.get("row_count", 0))}
+228: 
+229: 
+230: def _hit_row(hit: dict[str, Any], channel: str) -> dict[str, Any]:
+231:     """把 Milvus 的一条命中摊平成业务字段（含现成的引用串）。"""
+232:     entity = hit.get("entity") or {}
+233:     title = str(entity.get("title", ""))
+234:     h1 = str(entity.get("h1", ""))
+235:     h2 = str(entity.get("h2", ""))
+236:     h3 = str(entity.get("h3", ""))
+237:     return {
+238:         "doc_id": str(entity.get("doc_id", "")),
+239:         "title": title,
+240:         "h1": h1,
+241:         "h2": h2,
+242:         "h3": h3,
+
+(Showing lines 221-242 of 339. Use offset=243 to continue.)
+</content>
+
+[assistant]
+
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\backend\\app\\agents\\rag\\vector_store.py","new_string":"def collection_stats() -> dict[str, Any]:\n    \"\"\"集合概况。\n\n    `rows` 用 `count(*)` 查真实可见行，而不是 `get_collection_stats().row_count`：\n    后者统计的是已写入的行，delete 之后要等 Milvus 自己 compact 才会减少，\n    演示时会出现\"删了文章但 health 还多几行\"的怪现象。\n    \"\"\"\n    client = get_client()\n    name = settings.milvus_collection\n    if not client.has_collection(name):\n        return {\"collection\": name, \"exists\": False, \"rows\": 0}\n    result = client.query(collection_name=name, filter=\"\", output_fields=[\"count(*)\"])\n    rows = int((result[0] or {}).get(\"count(*)\", 0)) if result else 0\n    return {\"collection\": name, \"exists\": True, \"rows\": rows}","old_string":"def collection_stats() -> dict[str, Any]:\n    client = get_client()\n    name = settings.milvus_collection\n    if not client.has_collection(name):\n        return {\"collection\": name, \"exists\": False, \"rows\": 0}\n    stats = client.get_collection_stats(name)\n    return {\"collection\": name, \"exists\": True, \"rows\": int(stats.get(\"row_count\", 0))}"}
+
+[tool • edit]
+The file D:\zuixin\backend\app\agents\rag\vector_store.py has been updated successfully.
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe -c \"from backend.app.agents.tools import mcp_client; print(mcp_client.call_tool('kb','health',{}))\" 2>&1 | Select-Object -Last 3; Remove-Item \".tmp_rows.py\" -Force -ErrorAction SilentlyContinue","description":"Verify health row count after fix","timeoutMs":180000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+{'ok': True, 'server': 'kb', 'collection': 'smartdesk_kb', 'exists': True, 'rows': 97}
+[stderr]
+                             'smartdesk-kb' with transport                     
+                             'stdio'                                           
+
+
+[assistant]
+Now health reports 97 correctly.
+
+Now update docs:
+1. `docs/讲解卡.md` — add mention of `_warmup` in kb_server line (interview talking point), and possibly a "踩坑" entry.
+2. `README.md` — maybe an "已知边界"/踩坑 note.
+
+Let me look at the 讲解卡 structure around line 73 and see if there's a 踩坑 section.
+
+[assistant • grep]
+{"path":"D:\\zuixin\\docs\\讲解卡.md","pattern":"^#{1,3} "}
+
+[tool • grep]
+Found 18 matches
+
+docs\讲解卡.md
+Line 1: # SmartDesk AI 讲解卡
+Line 8: ## 0. 一句话讲这个项目
+Line 15: ## 1. 一张图：9 个节点怎么走
+Line 33: ## 2. 每个文件讲什么（按层）
+Line 35: ### 2.1 图与状态（最该先读）
+Line 44: ### 2.2 节点（9 个，加上 1 张表文件）
+Line 58: ### 2.3 RAG（知识库）
+Line 68: ### 2.4 工具（MCP）
+Line 78: ### 2.5 HTTP / 流式
+Line 88: ### 2.6 脚本与前端
+Line 103: ## 3. 八个"为什么"（面试主战场）
+Line 132: ## 4. 一条请求怎么走（演示脚本）
+Line 135: # 1) 知识型：带引用回答
+Line 138: # 2) 动作型：抽出动作参数（action.args），停在确认门
+Line 142: # 3) 审批门：员工发起、主管跨进程批准
+Line 146: # 4) 看审批表（带 thread_id，Web 审批中心就是按它 resume 的）
+Line 155: ## 5. 三个"坑"（面试加分项）
+Line 163: ## 6. 边界（不知道就说不了解）
+
+[assistant]
+
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\docs\\讲解卡.md","offset":100,"limit":85}
+
+[tool • read]
+<path>D:\zuixin\docs\讲解卡.md</path>
+<type>file</type>
+<content>
+100: 
+101: ---
+102: 
+103: ## 3. 八个"为什么"（面试主战场）
+104: 
+105: 1. **为什么用 LangGraph 手写，不用 `create_agent`？**
+106:    因为我要的是"**停下来等人**"：审批要跨进程、要能按新参数重算风险、要留痕。高层封装把工具调用交给模型自由决定，审批与审计就不可控了。
+107: 
+108: 2. **为什么 9 个节点这样切？**
+109:    沿一条请求的真实阶段切：理解 → 取证 → 分叉（回答/规划）→ 三个闸门 → 执行 → 拼话。每个节点只干一件事，出问题能定位到节点。
+110: 
+111: 3. **为什么"制度和事实"要分两袋？**
+112:    制度回答"规定是什么"（要引用），事实回答"这张单现在什么状态"（不要引用、不要编号）。混在一起会让模型把工具返回当制度引用，也会答非所问。
+113: 
+114: 4. **为什么风险必须由表决定，不能让模型判？**
+115:    模型可以被话术骗。风险只能是 `RISK_BY_OP` + `compute_risk`（参数升级：关单 + 通知 = 不可逆），这样"危险等级"可测、可审计、可讲。
+116: 
+117: 5. **为什么"发起 ≠ 批准"？**
+118:    员工该能提需求，但不能自己批自己。所以谁能发起是权限，能不能点通过看**恢复时**拿同一 `thread_id` 的那个人；有审批权的人自己批自己要标 `self_approved`。
+119:    也正因为"谁在恢复"决定结果，`approvals` 表必须存 `thread_id`——否则审批中心看到一条待办，也不知道该 resume 哪条会话（它跟 checkpoint 是两个存储）。
+120: 
+121: 6. **为什么确认卡改完参数还要重算风险？**
+122:    原本"关单"是可撤销，但勾了"通知提单人"就变成对外可见、不可撤回——不重算就会漏掉一道审批。所以 `confirm_action` 通过后重新 `compute_risk`，该升级就升级。
+123: 
+124: 7. **为什么只有 `execute_action` 能写库？**
+125:    写操作集中在一个节点，才能保证"进到这里之前该批的都批了"，再补一道 `approval.approver` 兜底。别的节点只读。
+126: 
+127: 8. **为什么检索用 RRF 而不是加权分数？**
+128:    稠密分数（余弦）和 BM25 分数不在一个量纲，归一化很脆；RRF 只用排名，稳、不用调参，取 `k=60` 让前几名权重接近、避免单路垄断。
+129: 
+130: ---
+131: 
+132: ## 4. 一条请求怎么走（演示脚本）
+133: 
+134: ```bash
+135: # 1) 知识型：带引用回答
+136: .venv\Scripts\python.exe -m scripts.run_graph run --thread t1 -m "年假有多少天？"
+137: 
+138: # 2) 动作型：抽出动作参数（action.args），停在确认门
+139: .venv\Scripts\python.exe -m scripts.run_graph run --thread t2 -m "帮我建个工单：VPN 连不上，影响 2 个人"
+140: .venv\Scripts\python.exe -m scripts.run_graph resume --thread t2 --approve
+141: 
+142: # 3) 审批门：员工发起、主管跨进程批准
+143: .venv\Scripts\python.exe -m scripts.run_graph run --thread t3 --role employee -m "把 TK-... 关掉，顺便通知提单人"
+144: .venv\Scripts\python.exe -m scripts.run_graph resume --thread t3 --role approver --user u-9001 --approve
+145: 
+146: # 4) 看审批表（带 thread_id，Web 审批中心就是按它 resume 的）
+147: .venv\Scripts\python.exe -m scripts.run_graph approvals --role approver
+148: ```
+149: 
+150: Web：`uvicorn backend.app.api.main:app --port 8010` + `cd frontend && npm run dev`（浏览器开 `http://localhost:5173`）。
+151: 审批中心的"通过/驳回"按钮会拿那一行 `approvals.thread_id` 调 `/runs/{id}/resume`——这就是"发起人在这页提交、主管在另一页点头、状态在 Postgres"的完整闭环。
+152: 
+153: ---
+154: 
+155: ## 5. 三个"坑"（面试加分项）
+156: 
+157: 1. **恢复时节点会重跑**：`interrupt` 恢复不是"从下一行继续"，而是重放该节点。所以写审批留痕要幂等（`save_approval` 先查 pending）。
+158: 2. **MCP 返回形状会变**：新版 adapters 返回 `[{"type":"text","text":...}]` 而不是 `ToolMessage`，所以要 `_text_of()` 兼容三种形状，否则建单报"无法解析的工具返回"。
+159: 3. **Word 表格边框不可靠**：做简历/文档时 `tblBorders=none` 在 LibreOffice 里仍会画线——与项目无关，但说明"别相信渲染一致性"。
+160: 
+161: ---
+162: 
+163: ## 6. 边界（不知道就说不了解）
+164: 
+165: - 没做**多 Agent**：单链路业务，拆多 Agent 只多同步成本。
+166: - 没做**精排**：两条检索未命中要靠 cross-encoder（gte-rerank-v2）才能补。
+167: - **审批权限**目前是请求头身份 + 工具层校验，没有登录/JWT。
+168: - 审批完成后**发起人不会收到推送**：审批中心改的是 `approvals` 表与会话 checkpoint，员工那页要刷新 / 再发一句话才看得到结果（真实系统这里要接消息通知）。
+169: - 一条 thread 同时只允许一个挂起待办：挂起期间再发消息会被 409 拒掉，避免冲掉 checkpoint。
+170: - 知识库是**演示语料**（7 份虚构制度），入库链路是真的。
+
+(End of file - total 170 lines)
+</content>
+
+[assistant]
+I'll add a 4th "坑" about the kb_server warmup, since that's a strong interview talking point (debugging a hang in MCP stdio). Let me insert it as item 4 in section 5.
+
+Also update section 2.4's kb_server row to mention `_warmup`.
+
+Let me look at lines 68-78 to edit precisely.
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\docs\\讲解卡.md","limit":14,"offset":68}
+
+[tool • read]
+<path>D:\zuixin\docs\讲解卡.md</path>
+<type>file</type>
+<content>
+68: ### 2.4 工具（MCP）
+69: 
+70: | 文件 | 讲什么 | 一句话 |
+71: |---|---|---|
+72: | `mcp/servers/ticket_server.py` | 工单 server（5 工具 + 审批留痕 2 个） | 8 个 `@ticket_mcp.tool()`：建/改/关/查/列表 + 存审批/查审批 |
+73: | `mcp/servers/kb_server.py` | 知识 server（2 工具） | `search_kb` 给外部客户端复用；`publish_kb_article` 图内可达 |
+74: | `mcp/servers/guard.py` | 工具层鉴权 | 3 个角色（employee / approver / kb_owner），跨租户、越权一律 `forbidden` |
+75: | `tools/mcp_client.py` | MCP 客户端 | `MultiServerMCPClient` 起 stdio 子进程；沙箱禁子进程时自动降级进程内调用 |
+76: | `tools/ticket_tools.py` / `kb_tools.py` | 工具封装 | 节点不直接拼参数，走这里统一传 `actor` |
+77: 
+78: ### 2.5 HTTP / 流式
+79: 
+80: | 文件 | 讲什么 | 一句话 |
+81: |---|---|---|
+
+(Showing lines 68-81 of 170. Use offset=82 to continue.)
+</content>
+
+[assistant]
+
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\docs\\讲解卡.md","new_string":"| `mcp/servers/kb_server.py` | 知识 server（2 工具） | `search_kb` 给外部客户端复用；`publish_kb_article` 图内可达；`_warmup()` 见第 5 节第 4 条 |","old_string":"| `mcp/servers/kb_server.py` | 知识 server（2 工具） | `search_kb` 给外部客户端复用；`publish_kb_article` 图内可达 |"}
+
+[tool • edit]
+The file D:\zuixin\docs\讲解卡.md has been updated successfully.
+
+[assistant]
+
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\docs\\讲解卡.md","new_string":"## 5. 四个\"坑\"（面试加分项）\n\n1. **恢复时节点会重跑**：`interrupt` 恢复不是\"从下一行继续\"，而是重放该节点。所以写审批留痕要幂等（`save_approval` 先查 pending）。\n2. **MCP 返回形状会变**：新版 adapters 返回 `[{\"type\":\"text\",\"text\":...}]` 而不是 `ToolMessage`，所以要 `_text_of()` 兼容三种形状，否则建单报\"无法解析的工具返回\"。\n3. **Word 表格边框不可靠**：做简历/文档时 `tblBorders=none` 在 LibreOffice 里仍会画线——与项目无关，但说明\"别相信渲染一致性\"。\n4. **同步工具在 MCP worker 线程里首次 import 重依赖会卡死**：kb server 的工具调 `pymilvus`，FastMCP 把同步工具丢进 anyio worker 线程执行，那串 C 扩展在该线程里首次 import 实测 90s 不返回（栈停在 `numpy/_core/_multiarray_umath`；同样的 import 在主线程只要 1s）。表现是\"调 `search_kb` 没反应、也不报错\"。\n   定位方法：`faulthandler.dump_traceback_later(15, repeat=True)` 打服务端栈，再用\"进程内直调 handler（通）/ 普通线程 import（通）/ MCP stdio 调（挂）\"三组对照把范围压到传输层。\n   修法：`kb_server.py` 在 `__main__` 里 `_warmup()`，把 import 提前到主线程（只 import 不连库，`get_client()` 仍是懒连接），代价是子进程启动多约 1 秒。","old_string":"## 5. 三个\"坑\"（面试加分项）\n\n1. **恢复时节点会重跑**：`interrupt` 恢复不是\"从下一行继续\"，而是重放该节点。所以写审批留痕要幂等（`save_approval` 先查 pending）。\n2. **MCP 返回形状会变**：新版 adapters 返回 `[{\"type\":\"text\",\"text\":...}]` 而不是 `ToolMessage`，所以要 `_text_of()` 兼容三种形状，否则建单报\"无法解析的工具返回\"。\n3. **Word 表格边框不可靠**：做简历/文档时 `tblBorders=none` 在 LibreOffice 里仍会画线——与项目无关，但说明\"别相信渲染一致性\"。"}
+
+[tool • edit]
+The file D:\zuixin\docs\讲解卡.md has been updated successfully.
+
+[assistant]
+Now let me also check whether README's 已知边界 should mention it. The README is more for running; a 踩坑 section may exist. Let me grep README for 已知边界 / 踩坑.
+
+Also: I should verify the full E2E once more after the collection_stats change (health works). And run a knowledge query to confirm nothing broken (eval just ran fine).
+
+Let me check README structure briefly.
+
+[assistant • grep]
+{"path":"D:\\zuixin\\README.md","pattern":"^#{1,3} |已知边界|踩坑"}
+
+[tool • grep]
+Found 14 matches
+
+README.md
+Line 1: # SmartDesk AI · 企业内部服务台 Agent
+Line 11: ## 架构
+Line 36: ## 目录
+Line 54: ## 快速开始
+Line 57: # 0) 环境：Python 3.12 + Node 20+ + Docker Desktop
+Line 58: #    依赖已装在 .venv（见 pyproject.toml）
+Line 60: # 1) 依赖服务（Milvus / PostgreSQL）
+Line 64: # 2) 配置环境变量（自己填 key，不要提交）
+Line 67: # 3) CLI：知识问答 / 建单 / 审批
+Line 72: # 4) HTTP + SSE
+Line 75: # 5) 前端（另开终端）
+Line 85: ## 评测
+Line 100: ## 演示数据说明
+Line 104: ## 已知边界
+
+[assistant]
+
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\README.md","limit":22,"offset":100}
+
+[tool • read]
+<path>D:\zuixin\README.md</path>
+<type>file</type>
+<content>
+100: ## 演示数据说明
+101: 
+102: `docs/kb/src/` 是**虚构公司「星澜科技」的制度文档**（文中已标注"技术演示用的虚构示例"），由脚本生成 PDF 后经 MinerU 解析入库。工单库里的数据都是演示数据。
+103: 
+104: ## 已知边界
+105: 
+106: - 没有登录/JWT：身份走请求头（`X-User-Id` / `X-Tenant-Id` / `X-Roles`），权限在 MCP server 侧校验；
+107: - 没有 cross-encoder 精排：两条检索未命中（`g33` / `g49`）需要精排才能补；
+108: - 单 Agent：单链路业务，拆多 Agent 只会多同步成本；
+109: - 审批只做"关单并通知""发布知识"两类不可逆动作，未覆盖派单 / SLA / 流转；
+110: - 审批完成后**发起人不会收到推送**：审批中心改的是 `approvals` 表和会话的 checkpoint，员工那页要再发一句话 / 刷新才看得到结果（真实系统这里要接消息通知）；
+111: - 一条 thread 同时只能有一个挂起中的待办：挂起期间再发消息会返回 409，避免把 checkpoint 冲掉（前端已提示先处理卡片）。
+
+(End of file - total 111 lines)
+</content>
+
+[assistant]
+
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\README.md","new_string":"- 一条 thread 同时只能有一个挂起中的待办：挂起期间再发消息会返回 409，避免把 checkpoint 冲掉（前端已提示先处理卡片）。\n\n## 运行时注意\n\n- **kb server 启动会预热 import**（`backend/app/mcp/servers/kb_server.py` 的 `_warmup()`）：FastMCP 把同步工具放到 worker 线程执行，`pymilvus`/`numpy` 的 C 扩展在该线程里首次 import 会卡住不返回；提前在主线程 import 一次，代价是每个 kb 工具子进程多约 1 秒启动时间。\n- 知识文章的可见性只有 `published` 一种状态（审批在写之前），`doc_status` 已经是 `vector_store.DOC_STATUS_PUBLISHED` 这个常量，读写都不再传参。","old_string":"- 一条 thread 同时只能有一个挂起中的待办：挂起期间再发消息会返回 409，避免把 checkpoint 冲掉（前端已提示先处理卡片）。"}
+
+[tool • edit]
+The file D:\zuixin\README.md has been updated successfully.
+
+[assistant]
+Now let me do a final full check:
+1. `compileall` again.
+2. Run the publish E2E again? That created test data. I already verified publish works (kb-1793966317360). Since then I changed `collection_stats` only. No need to re-run publish. But it'd be good to sanity check `search_kb` and knowledge question still work — eval_rag ran fine after.
+
+3. Confirm no temp files, no lingering processes.
+4. Verify git status to show what changed? Let me check if it's a git repo — helpful to review the diff.
+
+Let me run compileall + git status.
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe -m compileall -q backend scripts; \"[compile exit] $LASTEXITCODE\"; git status --porcelain 2>&1 | Select-Object -First 40","description":"Compile check and git status","timeoutMs":120000,"workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+[compile exit] 0
+[stderr]
+git : 无法将“git”项识别为 cmdlet、函数、脚本文件或可运行程序的名称。请检查名称的拼写，如果包括路径，请确保路径正确，然后再试一次。
+所在位置 行:1 字符: 253
++ ... leall -q backend scripts; "[compile exit] $LASTEXITCODE"; git status  ...
++                                                               ~~~
+    + CategoryInfo          : ObjectNotFound: (git:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+[exit code: 1]
+
+[assistant]
+No git in PATH. Fine.
+
+Let me verify the final state of the changed files by reviewing key diffs mentally... Actually let me do one final functional smoke: run a knowledge question + a chat through CLI to make sure graph still works end-to-end after all changes (and these don't create persistent junk; chat/knowledge create checkpoints though — I'll clean them after, or use thread names t-smoke1/t-smoke2 then delete).
+
+Actually eval_rag already validates retrieval. `run_graph tools` validated MCP. The last remaining risk: nothing changed in graph logic since last full test. So no need.
+
+But wait — one thing I should double check: `collection_stats()` uses `filter=""` — does MilvusClient.query accept empty filter? With limit default 10? `count(*)` with filter="" returns 1 row. It worked (rows: 97). Good.
+
+Now, is there anything else outstanding from the user's request "删除冗余参数"? I:
+- Removed only_published / doc_status / status parameters.
+- Found & fixed the `status` mismatch bug (publish would always fail validation) — actually this was a *consequence* of removing: before removal, payload had "status" which the server didn't accept → publish broken.
+- Found & fixed MCP stdio hang (kb tools entirely broken) — big finding.
+- Fixed health row count accuracy.
+
+Let me also double-check: `kb_tools.search_kb` — does its payload include anything the server doesn't accept? Let me check kb_tools.py and kb_server.search_kb signature: `search_kb(actor, query, top_k=3)`. kb_tools.search_kb(actor, query, top_k=3) → payload {actor, query, top_k} presumably. It worked in verify. ✓
+
+Also `ticket_tools` — validated by earlier runs. ✓
+
+One more: `execute.py` for publish passes args from plan_action: title, content, tags, change_note → matches server signature ✓ (verified E2E).
+
+Let me also confirm there are no remaining references to removed params anywhere (grep).
+
+Then write the final report to the user.
+
+Let me grep for `only_published`, `doc_status=`, `status="published"`, `"status": "from_user"`.
+
+[assistant • grep]
+{"pattern":"only_published|doc_status=|status=\\\"published\\\"|from_user","path":"D:\\zuixin\\backend"}
+
+[tool • grep]
+Found 10 matches
+
+backend\app\agents\prompts\service_desk.py
+Line 44: - from_user：员工自己说的
+
+backend\app\agents\rag\vector_store.py
+Line 184:     落库一律 `doc_status="published"`：本文档库入库的是已定稿的制度文件，没有草稿态。
+
+backend\app\agents\nodes\plan_action.py
+Line 108:             "description": "from_user",
+Line 119:         sources = {"ticket_no": "from_user" if ticket_no else "agent_inferred", "patch": "agent_inferred"}
+Line 136:             "ticket_no": "from_user" if ticket_no else "agent_inferred",
+Line 137:             "resolution": "from_user",
+Line 138:             "notify_reporter": "from_user",
+Line 163:         return {"ticket_no": ticket_no}, missing, {"ticket_no": "from_user"}, "查工单"
+Line 233:             arg_sources[key] = "from_user"
+
+backend\app\agents\nodes\human_gate.py
+Line 105:         sources[key] = "from_user"  # 人改过的值，来源就是人
+
+[assistant]
+`from_user` is a legitimate source label — fine. `vector_store.py:184` docstring mentions `doc_status="published"` — that's prose describing behavior; acceptable but let me check that docstring is accurate now (no param). Let me read around 180-190.
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\backend\\app\\agents\\rag\\vector_store.py","limit":18,"offset":180}
+
+[tool • read]
+<path>D:\zuixin\backend\app\agents\rag\vector_store.py</path>
+<type>file</type>
+<content>
+180:     - dense：用 `chunk.text`（正文已带「文档 · 章节」面包屑）算 embedding；
+181:     - sparse：不传，由 collection 上的内置 BM25 函数在服务端生成；
+182:     - `force=True` 会 drop 重建 collection（改 schema / 换 embedding 模型时用）。
+183: 
+184:     落库一律 `doc_status="published"`：本文档库入库的是已定稿的制度文件，没有草稿态。
+185:     """
+186:     tenant_id = tenant_id or settings.default_tenant
+187:     if not chunks:
+188:         return 0
+189:     client = ensure_collection(drop=force)
+190:     embedder = get_embedder()
+191:     vectors = embedder.embed_documents([chunk.text for chunk in chunks])
+192:     rows: list[dict[str, Any]] = []
+193:     for chunk, vector in zip(chunks, vectors):
+194:         meta = chunk.metadata
+195:         doc_id = str(meta.get("doc_id", ""))
+196:         chunk_index = int(meta.get("chunk_index", 0))
+197:         rows.append(
+
+(Showing lines 180-197 of 346. Use offset=198 to continue.)
+</content>
+
+[assistant]
+That docstring is fine (describes behavior, not a param).
+
+Now let me look at all changed files once more to be safe — specifically vector_store.py's `_filter_expr` and `publish_article`, and kb_tools.py. Let me quickly review `_filter_expr`.
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\backend\\app\\agents\\rag\\vector_store.py","limit":45,"offset":60}
+
+[tool • read]
+<path>D:\zuixin\backend\app\agents\rag\vector_store.py</path>
+<type>file</type>
+<content>
+60: 
+61: def get_client() -> MilvusClient:
+62:     global _client
+63:     if _client is None:
+64:         _client = MilvusClient(uri=settings.milvus_uri, timeout=settings.milvus_timeout)
+65:     return _client
+66: 
+67: 
+68: def reset_client() -> None:
+69:     global _client
+70:     if _client is not None:
+71:         try:
+72:             _client.close()
+73:         except Exception:  # pragma: no cover
+74:             pass
+75:     _client = None
+76: 
+77: 
+78: def _filter_expr(tenant_id: str | None) -> str:
+79:     """过滤表达式：多租户隔离 + 只检索已发布内容。
+80: 
+81:     写入侧只有两条路（`upsert_chunks` 入库文档、`publish_article` 发布文章），
+82:     而发布本身要过审批闸门，所以落库时一定已经是 published，库里没有草稿态。
+83:     这里仍保留 `doc_status` 过滤，是把它当"可见性不变量"写在读路径上：
+84:     将来若有人加一条绕过审批的写入旁路，默认也不会把未发布内容漏给员工。
+85:     """
+86:     parts: list[str] = []
+87:     if tenant_id:
+88:         parts.append(f'tenant_id == "{tenant_id}"')
+89:     parts.append('doc_status == "published"')
+90:     return " and ".join(parts)
+91: 
+92: 
+93: def ensure_collection(drop: bool = False, client: MilvusClient | None = None) -> MilvusClient:
+94:     """建 collection：字段 + 内置 BM25 函数 + 三个索引。已存在则直接返回。"""
+95:     client = client or get_client()
+96:     name = settings.milvus_collection
+97: 
+98:     if client.has_collection(name):
+99:         if not drop:
+100:             fields = [f.get("name") for f in (client.describe_collection(name).get("fields") or [])]
+101:             if SCHEMA_MARKER in fields:
+102:                 return client
+103:             logger.warning("collection %s 是旧 schema（缺 %s），自动重建", name, SCHEMA_MARKER)
+104:         client.drop_collection(name)
+
+(Showing lines 60-104 of 346. Use offset=105 to continue.)
+</content>
+
+[assistant]
+Good. Now let me produce the final report to the user.
+
+Before that, one more consideration: the user asked "删除冗余参数" — I should report:
+1. What I deleted (the parameter chains).
+2. Two real bugs found as a result:
+   - publish payload `status` param never accepted by server → publish always failed after approval (100% broken path).
+   - kb server tools over stdio all hung (numpy import in anyio worker thread) → fixed with `_warmup()`.
+   - `health` row count stale → switched to `count(*)`.
+3. Verification results.
+4. Docs updated.
+
+Also worth telling the user honestly: the kb MCP tools were *completely unusable* before this fix — meaning their resume claim "MCP 双 server" would not survive a demo of search_kb. Now it works, verified end-to-end.
+
+Also mention the cost: kb subprocess spawn ~1-2s extra; each kb tool call 4-8s because mcp_client opens a new session per call (known inefficiency; could be optimized later but not needed).
+
+Hmm, should I also optimize the per-call session? 4-8s per kb tool call. For the demo, publish isn't in the demo script necessarily. It's fine. But I might mention it as a known tradeoff.
+
+Let me also double check the final `docs/eval/report.md` got regenerated — the metrics same. Fine.
+
+Let me verify no leftover processes and the .data state is clean:
+- approvals 73
+- Milvus 97
+- tickets: earlier restored 0005-0007 open. The publish test didn't create tickets.
+
+Let me do a final quick check of approvals pending count and tickets count for sanity, plus confirm no .tmp files and no stray python.
+
+Then write the report.
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe -c \"import sqlite3;c=sqlite3.connect('.data/tickets.sqlite');print('approvals',c.execute('select count(*) from approvals').fetchone()[0],'pending',c.execute(\\\"select count(*) from approvals where status='pending'\\\").fetchone()[0]);print('tickets',c.execute('select count(*) from tickets').fetchone()[0],'open',c.execute(\\\"select count(*) from tickets where status='open'\\\").fetchone()[0])\" 2>&1 | Select-Object -Last 3; \"tmp files: \" + (Get-ChildItem -Filter \".tmp_*\" -Force -ErrorAction SilentlyContinue | Measure-Object).Count; \"python procs: \" + (Get-Process python -ErrorAction SilentlyContinue | Measure-Object).Count","description":"Final sanity check of demo data state","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+tmp files: 0
+python procs: 0
+[stderr]
+* : 无法将“*”项识别为 cmdlet、函数、脚本文件或可运行程序的名称。请检查名称的拼写，如果包括路径，请确保路径正确，然后再试一次。
+所在位置 行:1 字符: 359
++ ... pprovals').fetchone()[0],'pending',c.execute(\"select count(*) from a ...
++                                                                 ~
+    + CategoryInfo          : ObjectNotFound: (*:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+
+
+[assistant]
+
+
+[assistant • write]
+{"content":"\"\"\"临时：复核演示数据状态。\"\"\"\n\nimport sqlite3\n\nconn = sqlite3.connect(r\".data/tickets.sqlite\")\nprint(\"approvals:\", conn.execute(\"select count(*) from approvals\").fetchone()[0])\nprint(\"pending  :\", conn.execute(\"select count(*) from approvals where status='pending'\").fetchone()[0])\nprint(\"tickets  :\", conn.execute(\"select count(*) from tickets\").fetchone()[0])\nprint(\"open     :\", conn.execute(\"select count(*) from tickets where status='open'\").fetchone()[0])\nprint(\"last 5   :\", conn.execute(\"select ticket_no,status,title from tickets order by ticket_no desc limit 5\").fetchall())\nconn.close()\n","file_path":"D:\\zuixin\\.tmp_check.py"}
+
+[tool • write]
+<path>D:\zuixin\.tmp_check.py</path>
+<type>file</type>
+<content>
+Created file
+</content>
+
+[assistant]
+
+
+[assistant • pwsh]
+{"command":"$env:PYTHONIOENCODING=\"utf-8\"; .\\.venv\\Scripts\\python.exe .tmp_check.py 2>&1 | Select-Object -Last 8; Remove-Item \".tmp_check.py\" -Force","description":"Check demo data counts","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+approvals: 73
+pending  : 11
+tickets  : 35
+open     : 16
+last 5   : [('TK-20261106-0007', 'open', 'VPN 客户端证书过期，影响 2 人'), ('TK-20261106-0006', 'open', 'VPN 客户端证书过期，影响 2 人，需建单处理'), ('TK-20261106-0005', 'open', '网线松动，影响1人'), ('TK-20261106-0004', 'open', '显示器花屏，影响2人'), ('TK-20261106-0003', 'closed', 'VPN 客户端装不上，影响 1 人')]
+
+
+[assistant]
+Data state matches the pre-test baseline (approvals 73, tickets 35 with 0005-0007 open).
+
+Now let me write the final report to the user in Chinese.
+
+Content:
+1. 你说得对：`only_published` 确实是死参数，已删；顺藤摸瓜还删了 `doc_status` / `status` 两条参数链。
+2. 但删的过程中暴露了两个真 Bug（这比删参数本身更重要）：
+   - Bug A：`kb_tools.publish_kb_article` 一直往 MCP 传 `status="published"`，而 `kb_server` 的工具函数从来没有这个形参 → 只要走到发布，必定 `Unexpected keyword argument` 失败。也就是说"发布知识文章"这条不可逆写链路，之前 100% 跑不通（因为 E2E 从没覆盖过这个 op）。
+   - Bug B：修完参数后，真正调用又卡死在 stdio —— 根因是 FastMCP 把同步工具丢进 anyio worker 线程，`numpy`/`pymilvus` 的 C 扩展在该线程首次 import 会卡住（实测 90s 不返回；同 import 在主线程 1s）。表现是 `search_kb` / `publish_kb_article` / `health` 三个工具全部无响应且不报错。修法：`kb_server.py` 加 `_warmup()`，`__main__` 里先预热再 run。
+   - 附带：`health` 的 rows 用 `get_collection_stats().row_count` 在删除后不更新（显示 101，实际 97），改成 `count(*)`。
+3. 现在的效果（实测数据）
+   - publish E2E 全链路：CLI 发起 → approve 门 → 主管 resume → `mcp_ok`，写入 `kb-...`，耗时 ~16s。
+   - kb 三个工具 stdio 全绿（health/search/denied/real publish）。
+   - eval 51 条不变：Recall@3 96.08%，MRR 0.8922。
+   - 9 个工具、compileall 通过。
+4. 清理：探针文章已从 Milvus 删除（97 行回到基线）、测试 approval / checkpoint 已删（approvals 73）、`.tmp_*` 全删、无残留进程。
+5. 文档：README 加「运行时注意」两条；讲解卡第 5 节从"三个坑"改成"四个坑"，把这次排查写成面试素材（栈 + 三组对照 + 修法）。
+6. 对简历的意义：这是本次最有含金量的发现——"一个从来没被调用过的 MCP server 分支里藏着两处必炸的缺陷"。面试可以讲：如何用 faulthandler + 分组对照把"工具调用没反应"定位到 anyio worker 线程的 import 死锁。
+
+Also mention remaining known cost: 每次 kb 工具调用 4~8s（`mcp_client` 每次 ainvoke 都新开会话起子进程），如果在意可以以后改成复用 session，但演示够用。
+
+Keep it organized and concise. Use file links where relevant.
+
+Let me get exact file paths: 
+- D:\zuixin\backend\app\mcpp\servers\kb_server.py
+- D:\zuixin\backend\app\agents\rag\vector_store.py
+- D:\zuixin\backend\app\agents\tools\kb_tools.py
+- D:\zuixin\backend\app\agents\nodes\execute.py
+- D:\zuixin\backend\app\agents\nodes\plan_action.py
+- D:\zuixin\README.md
+- D:\zuixin\docs\讲解卡.md
+
+Use markdown links relative: backend/app/mcp/servers/kb_server.py etc.
+
+Write the answer.
+
+[assistant]
+<acp tokens="1.5K" type="text" time="2026-11-06 20:04:36">m01245</acp>
+参数已经删除完毕，而且**在删除过程中发现了两个真正的 bug**。这两个 bug 比参数本身重要得多。
+
+## 一、你指出的冗余参数，确实冗余（已删）
+
+`only_published` 是一个永远不会为 False 的参数，因为它的调用链只有一条，并且按默认值传递。整条调用链一并删除：
+
+| 位置 | 删了什么 |
+|---|---|
+| `backend/app/agents/rag/vector_store.py:78` | `_filter_expr(tenant_id, only_published=True)` → `_filter_expr(tenant_id)`，`doc_status` 过滤改为**无条件拼接**（写入路径只有两条，且都必须经过审批，所以读路径把这个过滤条件当作可见性不变量） |
+| `backend/app/agents/rag/vector_store.py` | `upsert_chunks(..., doc_status=...)`、`publish_article(..., doc_status=...)` 的形参删除，改用新常量 `DOC_STATUS_PUBLISHED`，`_hit_row` 默认值也使用该常量 |
+| `backend/app/agents/knowledge.py` | `publish_article` 不再接收和传递 `doc_status` |
+| `backend/app/agents/tools/kb_tools.py` | `publish_kb_article(..., status=...)` 的形参和 payload 里的 `"status"` 一并删除 |
+| `backend/app/agents/nodes/execute.py:41` | 删掉 `status=args.get("status") or "published"` |
+| `backend/app/agents/nodes/plan_action.py:143-158` | `args` 删掉 `"status": "published"`，`sources` 删掉 `"status": "from_user"` |
+
+`grep only_published|doc_status=` 现在只剩下 docstring 里的说明文字。
+
+## 二、顺带发现两个真正的 bug（这才是重点）
+
+**Bug A：发布知识文章这条链路之前 100% 跑不通。**
+
+`kb_tools.publish_kb_article` 一直在往 MCP 传 `status="published"`，而 `kb_server.publish_kb_article(actor, title, content, tags=None, change_note="")` **从来没有这个形参**。实际报文如下：
+
+```
+{'ok': False, 'error': "1 validation error for call[publish_kb_article]\nstatus\n  Unexpected keyword argument"}
+```
+
+也就是说：审批通过 → 执行写入 → FastMCP 参数校验失败 → 拒绝。**这条唯一的不可逆写操作，之前从未被端到端跑过一次**（`gather_evidence` 走的是 `knowledge.search` 直连，绕开了 MCP，所以平时看不出来）。现在用员工身份调用，会正确返回 `forbidden`（走到真正的鉴权），而不是参数报错。
+
+**Bug B：修完参数后调用卡死，kb server 三个工具全部无响应。**
+
+现象是调用后没有任何响应，也不报错。用 `faulthandler.dump_traceback_later(15, repeat=True)` 打印服务端栈，卡在：
+
+```
+fastmcp/tools/function_tool.py:95 wrapper
+ → anyio/_backends/_asyncio.py:1100 run
+ → kb_server.py:44 _store → vector_store.py:22 → pymilvus/__init__.py:20
+ → numpy/__init__.py:122 → numpy/__config__.py:4
+```
+
+根因：**FastMCP 把同步工具放到 anyio 的 worker 线程里执行，而 `numpy`/`pymilvus` 这串 C 扩展在该线程里首次 import 会卡住**——实测 90 秒不返回；同样的 import 放在主线程或普通线程只要 0.7~1 秒（三组对照把范围缩小到“worker 线程”这一层，排除了环境变量、启动方式和 handler 本身）。
+
+修法（`backend/app/mcp/servers/kb_server.py`）：
+
+```python
+def _warmup() -> None:
+    """把重依赖 import 提到主线程；只 import，不连 Milvus（get_client() 仍是懒连接）。"""
+    _store()
+
+if __name__ == "__main__":
+    _warmup()
+    kb_mcp.run(transport="stdio", show_banner=False)
+```
+
+同时把 `health` 的 `rows` 从 `get_collection_stats().row_count` 改成 `count(*)`——前者在 delete 后要等 Milvus compact 才更新，会出现“删了文章但 health 显示 101 行（实际 97 行）”的怪现象。
+
+## 三、验证结果
+
+| 项 | 结果 |
+|---|---|
+| publish 端到端全流程 | `run`（kb_owner）→ clarify 补内容 → approve 门 → `resume --approve`（u-9002）→ **`via=mcp_ok`**，回复「已发布知识文章（kb-…），审批人：u-9002」，耗时 16s |
+| kb 三个工具通过 stdio 调用 | `health` / `search_kb` / `publish(denied)` / `publish(real)` 全部正确返回 |
+| 51 条评测 | `recall@1 0.8235 / recall@k 0.9608 / mrr 0.8922`，与改前一致 |
+| 其他 | `compileall` 退出码为 0；`run_graph tools` 显示 9 个工具正常 |
+
+## 四、清理与文档
+
+- Milvus 探针文章（`__tmp_probe3/4/6`、验收写的`会议室预约制度`）已删，**97 行回到基线**；`health` 现在显示 97。
+- 测试 approval 与 checkpoint（`t-pub`/`t-pub2`/`t-appr-*`/`web-*` 等 13 条）已删，`approvals` 回到 73 行，工单 35 条（`0005~0007` 已恢复 open）。
+- `.tmp_*` 临时脚本/日志全部删除，卡住的 8 个 python 进程也清理掉了。
+- [README.md](README.md) 新增「运行时注意」两条；[docs/讲解卡.md](docs/讲解卡.md) 第 5 节从“三个坑”扩成**四个坑**，把这次排查写进面试素材（栈信息 → 三组对照 → 修法 → 代价）。
+
+## 五、还有一个已知成本（不用改，但你该知道）
+
+kb 工具的每次调用仍然需要 4~8 秒：`mcp_client` 的 `get_tools()` + `tool.ainvoke()` 每次都会新开一次子进程，加上 2 秒预热。演示够用；真要压延迟，得把 session 改成常驻（改动不小，且会引入生命周期管理的麻烦）。我把它归到“已知成本”，不放进“边界”，因为功能是对的。
+
+一句话总结：**你怀疑的那个参数确实没有任何作用，但顺着它查到了两条从未被覆盖的写入路径**——一条 100% 失败，一条 100% 卡死，现在都已验证通过。
+
+[user]
+<acp tokens="33" type="text" time="2026-11-06 20:04:36">m01246</acp>
+1.有了mcp服务端，你的客户端到底在哪？
+2.所有的数据的涉及到的，到底这么查看
+
+[assistant]
+The user asks two questions:
+1. Since there's an MCP server, where exactly is the client?
+2. All the data involved — how exactly to view it?
+
+I should answer precisely with file paths and line numbers, and give concrete commands to inspect each data store. No need to execute much, but I might verify some paths/line numbers. Let me check the current state of relevant files so my answer is accurate.
+
+Let me read mcp_client.py (already read above — 245 lines). Client details:
+- `backend/app/agents/tools/mcp_client.py` is the client: `MultiServerMCPClient` with stdio transport (spawns `python backend/app/mcp/servers/ticket_server.py` / `kb_server.py` as subprocess), plus fallback to in-process `fastmcp.Client(server.mcp)`.
+- Callers: `backend/app/agents/tools/ticket_tools.py` and `kb_tools.py` (thin wrappers adding `actor`), which are called by nodes (`execute.py`, `human_gate.py`, `plan_action.py`?) — let me confirm which nodes call tools.
+
+Wait — an important nuance: `gather_evidence` for KB uses `knowledge.search` directly (in-process, NOT MCP). So the kb MCP tool `search_kb` is only used by... external clients? Let me verify: grep for `kb_tools.search_kb` usage.
+
+Let me verify precisely:
+- who calls `call_tool(`: ticket_tools, kb_tools
+- who calls ticket_tools.*: human_gate (save_approval), execute (create/update/close/query?), plan_action? Let me grep.
+
+Also for question 2: "所有的数据的涉及到的，到底这么查看" (probably "到底怎么查看" = how to view). Data stores:
+1. Milvus vector DB — 97 chunks; how to view: Attu at http://localhost:8000 (if in docker-compose), or python scripts, or `python -m scripts.env_status`, or CLI search. Also `scripts/ingest_docs`. Let me check docker-compose for attu.
+2. PostgreSQL — LangGraph checkpoints; view via `scripts.run_graph state --thread <id>`, or psql via docker exec.
+3. SQLite — tickets + approvals; view via frontend pages, or CLI `run_graph approvals`, or sqlite3 CLI / python.
+4. Uploaded docs / KB markdown: `docs/kb/md/`, `docs/kb/src/`.
+5. Eval report: `docs/eval/report.md`.
+6. Logs? 
+
+I should give a table: 数据 → 存在哪 → 怎么查看（命令）。
+
+Let me verify a few things by reading files/greps so the answer is accurate:
+- docker-compose services (attu? ports)
+- settings.py for connection strings (milvus_uri, database_url, db_path)
+- which nodes call which tools
+- scripts available (env_status, ingest_docs, run_graph, eval_rag, trace_run, etc.)
+
+Let me do these in parallel.
+
+[assistant • pwsh]
+{"command":"Get-Content deploy\\docker-compose.yml","description":"Read docker compose file","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+# SmartDesk AI 鏈湴渚濊禆鏈嶅姟
+# 鍚姩锛歝d deploy; docker compose up -d
+# 楠屾敹锛歞ocker compose ps锛堢瓑 milvus 鐨?HEALTH 鍙?healthy锛岀害 1-3 鍒嗛挓锛?#
+# 璇存槑锛歁inIO 鍦?2025 骞存妸绀惧尯鐗堥暅鍍忎粠 Docker Hub / Quay 鍏ㄩ儴涓嬫灦锛?# 瀹樻柟 compose 閲岀殑 minio/minio:<RELEASE...> 宸茬粡鎷変笉鍒般€?# 鍥犳杩欓噷鏀圭敤 Milvus standalone 鐨勩€屾湰鍦板瓨鍌ㄣ€嶅悗绔紙COMMON_STORAGETYPE=local锛夛紝
+# 灏戜竴涓鍣ㄣ€佸皯涓€浠藉唴瀛橈紝鍔熻兘锛坉ense+sparse 娣峰悎妫€绱級瀹屽叏涓嶅彈褰卞搷銆?# 濡傞渶鍒囧洖 MinIO锛岃鏂囦欢鏈熬娉ㄩ噴閲岀殑 fallback銆?name: smartdesk
+
+services:
+  postgres:
+    image: ${PG_IMAGE}
+    container_name: smartdesk-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DB}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+      # 鍏抽敭锛歜ind mount 鐩綍閲屽彲鑳芥湁 .gitkeep 绛夐殣钘忔枃浠讹紝initdb 瑕佹眰鏁版嵁鐩綍涓虹┖锛?      # 鎵€浠ユ妸 PGDATA 鎸囧埌鎸傝浇鐐逛笅鐨勫瓙鐩綍锛堝畼鏂规帹鑽愬仛娉曪級
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: Asia/Shanghai
+    ports:
+      - "${PG_PORT}:5432"
+    volumes:
+      - ./data/pg:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d ${PG_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  etcd:
+    image: ${ETCD_IMAGE}
+    container_name: smartdesk-etcd
+    restart: unless-stopped
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    volumes:
+      - ./data/etcd:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  milvus:
+    image: ${MILVUS_IMAGE}
+    container_name: smartdesk-milvus
+    restart: unless-stopped
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      # 鍏抽敭锛氫笉渚濊禆瀵硅薄瀛樺偍锛屽悜閲?绱㈠紩鏁版嵁鐩存帴鍐欐湰鍦板嵎
+      COMMON_STORAGETYPE: local
+      LOCALSTORAGE_PATH: /var/lib/milvus/data
+      TZ: Asia/Shanghai
+    ports:
+      - "${MILVUS_PORT}:19530"
+      - "${MILVUS_HTTP_PORT}:9091"
+    volumes:
+      - ./data/milvus:/var/lib/milvus
+    depends_on:
+      - etcd
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 180s
+      timeout: 20s
+      retries: 5
+
+  attu:
+    image: ${ATTU_IMAGE}
+    container_name: smartdesk-attu
+    restart: unless-stopped
+    environment:
+      MILVUS_URL: milvus:19530
+    ports:
+      - "${ATTU_PORT}:3000"
+    depends_on:
+      - milvus
+
+# ============================================================
+# Fallback锛氬鏋滃摢澶╂兂鍒囧洖 MinIO锛堟垨鏈湴瀛樺偍鍦ㄤ綘鐨?Milvus 鐗堟湰涓婁笉鍙敤锛夛紝
+# 1) 鍙栨秷涓嬮潰娉ㄩ噴锛?) milvus 鐨?environment 鎹㈠洖锛?#      ETCD_ENDPOINTS: etcd:2379
+#      MINIO_ADDRESS: minio:9000
+#      MINIO_ACCESS_KEY_ID: ${MINIO_USER}
+#      MINIO_SECRET_ACCESS_KEY: ${MINIO_PASSWORD}
+#    骞跺垹鎺?COMMON_STORAGETYPE / LOCALSTORAGE_PATH锛?) depends_on 鍔犲洖 minio銆?# 娉ㄦ剰 Bitnami 闀滃儚鐨勬暟鎹洰褰曟槸 /bitnami/minio/data锛岀幆澧冨彉閲忔槸 ROOT_USER/ROOT_PASSWORD銆?#
+#  minio:
+#    image: ${MINIO_IMAGE}
+#    container_name: smartdesk-minio
+#    restart: unless-stopped
+#    environment:
+#      MINIO_ROOT_USER: ${MINIO_USER}
+#      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+#    command: minio server /bitnami/minio/data --console-address ":9001"
+#    ports:
+#      - "${MINIO_PORT}:9000"
+#      - "${MINIO_CONSOLE_PORT}:9001"
+#    volumes:
+#      - ./data/minio:/bitnami/minio/data
+# ============================================================
+
+
+[assistant]
+The compose file has mojibake (GBK encoding read as UTF-8), but content is clear: services postgres, etcd, milvus, attu. Attu on ${ATTU_PORT}:3000.
+
+Let me check deploy/.env for ports.
+
+Also check settings.py for connection config.
+
+Let me gather: deploy/.env, backend/app/agents/settings.py.
+
+[assistant • pwsh]
+{"command":"Get-ChildItem deploy -Force | Select-Object Name; \"--- .env ---\"; Get-Content deploy\\.env -ErrorAction SilentlyContinue; \"--- .env.example ---\"; Get-Content deploy\\.env.example -ErrorAction SilentlyContinue","description":"Read deploy env and port config","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+Name              
+----              
+data              
+init              
+nginx             
+.env              
+docker-compose.yml
+--- .env ---
+# ===== 闀滃儚锛堟媺涓嶅姩灏辨敼杩欓噷鎹?tag锛屼笉瑕佹敼 compose 鏂囦欢锛?=====
+PG_IMAGE=postgres:16-alpine
+ETCD_IMAGE=quay.io/coreos/etcd:v3.5.16
+MILVUS_IMAGE=milvusdb/milvus:v2.6.0
+ATTU_IMAGE=zilliz/attu:v2.5
+
+# MinIO 绀惧尯闀滃儚宸蹭粠 Docker Hub/Quay 涓嬫灦锛屽綋鍓嶆柟妗堜笉鐢ㄥ畠锛?# 鍙湁鍒囧洖 compose 鏈熬鐨?fallback 鏃舵墠闇€瑕佽繖涓紙鍙敤 bitnamilegacy/minio:latest锛?MINIO_IMAGE=bitnamilegacy/minio:latest
+
+# ===== 鍑嵁锛堟湰鍦板紑鍙戠敤锛屼笉瑕佹彁浜ょ湡瀹炲瘑鐮侊級 =====
+PG_USER=smartdesk
+PG_PASSWORD=smartdesk
+PG_DB=smartdesk
+
+# 浠?fallback(MinIO) 鏃朵娇鐢?MINIO_USER=minioadmin
+MINIO_PASSWORD=minioadmin
+
+# ===== 瀹夸富鏈虹鍙ｏ紙琚崰鐢ㄥ氨鏀硅繖閲岋級 =====
+PG_PORT=5432
+MILVUS_PORT=19530
+MILVUS_HTTP_PORT=9091
+MINIO_PORT=9000
+MINIO_CONSOLE_PORT=9001
+ATTU_PORT=8000
+--- .env.example ---
+
+
+[exit code: 1]
+
+[assistant]
+
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\backend\\app\\agents\\settings.py"}
+
+[tool • read]
+<path>D:\zuixin\backend\app\agents\settings.py</path>
+<type>file</type>
+<content>
+1: """集中读取环境变量，避免节点里到处 os.getenv。
+2: 
+3: 三种外部依赖都可以"缺省但不崩"：
+4: - 没有 DEEPSEEK_API_KEY：直接报错（本项目不提供规则版实现）；
+5: - 没有 Postgres：checkpointer 自动回退 SQLite（本机演示用）；
+6: - 没有 Milvus / DASHSCOPE_API_KEY：直接报错，请先 docker compose 起 PG / Milvus 并配好 key。
+7: 
+8: 所有环境变量在此集中收敛，通过 UserContext / settings 传进节点，业务节点内不直接读 os.getenv。
+9: """
+10: 
+11: from __future__ import annotations
+12: 
+13: import os
+14: from dataclasses import dataclass
+15: from pathlib import Path
+16: 
+17: # 仓库根目录：backend/app/agents/settings.py -> 上三级
+18: ROOT_DIR = Path(__file__).resolve().parents[3]
+19: 
+20: 
+21: def _env(key: str, default: str = "") -> str:
+22:     return (os.getenv(key) or default).strip()
+23: 
+24: 
+25: # 可选：从仓库根 .env / backend/.env 读取（装了 python-dotenv 才生效，不装也能跑）
+26: try:  # pragma: no cover - 只在存在 .env 时生效
+27:     from dotenv import load_dotenv
+28: 
+29:     for _candidate in (ROOT_DIR / ".env", ROOT_DIR / "backend" / ".env"):
+30:         if _candidate.exists():
+31:             load_dotenv(_candidate, override=False)
+32: except Exception:  # noqa: BLE001
+33:     pass
+34: 
+35: 
+36: @dataclass(frozen=True)
+37: class Settings:
+38:     # ---------- LLM ----------
+39:     api_key: str = _env("DEEPSEEK_API_KEY")
+40:     base_url: str = _env("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+41:     model: str = _env("AGENT_TRANSPORT_MODEL", "deepseek-chat")
+42:     temperature: float = float(_env("AGENT_TEMPERATURE", "0") or 0)
+43: 
+44:     # ---------- 状态库（checkpoint）----------
+45:     # postgres: 生产用；sqlite: 无 PG 时的降级
+46:     checkpoint_backend: str = _env("AGENT_CHECKPOINT_BACKEND", "postgres").lower()
+47:     database_url: str = _env(
+48:         "DATABASE_URL", "postgresql://smartdesk:smartdesk@localhost:5432/smartdesk"
+49:     )
+50:     # SQLite 兜底文件
+51:     db_path: Path = Path(_env("AGENT_DB_PATH", str(ROOT_DIR / ".data" / "agent.sqlite")))
+52: 
+53:     # ---------- 向量库（Milvus）----------
+54:     milvus_uri: str = _env("MILVUS_URI", "http://localhost:19530")
+55:     milvus_collection: str = _env("MILVUS_COLLECTION", "smartdesk_kb")
+56:     milvus_timeout: float = float(_env("MILVUS_TIMEOUT", "5") or 5)
+57: 
+58:     # ---------- Embedding ----------
+59:     # DashScope 兼容模式（text-embedding-v4，1024 维）；没 key 会直接报错（见 rag/embedding.py）
+60:     embedding_api_key: str = _env("DASHSCOPE_API_KEY") or _env("EMBEDDING_API_KEY")
+61:     embedding_base_url: str = _env(
+62:         "EMBEDDING_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+63:     )
+64:     embedding_model: str = _env("EMBEDDING_TRANSPORT_MODEL", "text-embedding-v4")
+65:     embedding_dim: int = int(_env("EMBEDDING_DIM", "1024") or 1024)
+66:     # DashScope 兼容端点单次 embedding 最多 10 条，LangChain 按这个值分批
+67:     embedding_batch_size: int = int(_env("EMBEDDING_BATCH_SIZE", "10") or 10)
+68: 
+69:     # ---------- PDF 解析（MinerU 官方 SDK）----------
+70:     # 精准解析模式需要 token（mineru.net 免费申请）；轻量 flash 模式免登录
+71:     mineru_api_key: str = _env("MINERU_API_KEY") or _env("MINERU_TOKEN")
+72:     mineru_mode: str = _env("MINERU_MODE", "flash").lower()  # flash | precision
+73:     mineru_ocr: bool = _env("MINERU_OCR", "false").lower() in ("1", "true", "yes")
+74:     mineru_language: str = _env("MINERU_LANGUAGE", "ch")
+75:     mineru_timeout: int = int(_env("MINERU_TIMEOUT", "300") or 300)
+76: 
+77:     # 知识库原始文档目录（PDF 放这里，入库脚本扫它）
+78:     kb_source_dir: Path = Path(_env("KB_SOURCE_DIR", str(ROOT_DIR / "docs" / "kb" / "pdf")))
+79:     # 默认租户：CLI / 评测 / 知识库入库都用它，多租户隔离靠这个值做 filter
+80:     default_tenant: str = _env("DEFAULT_TENANT", "tenant-demo")
+81: 
+82:     @property
+83:     def llm_enabled(self) -> bool:
+84:         return bool(self.api_key)
+85: 
+86:     @property
+87:     def embedding_enabled(self) -> bool:
+88:         return bool(self.embedding_api_key)
+89: 
+90:     @property
+91:     def mineru_precise_enabled(self) -> bool:
+92:         """precision 模式必须有 token；flash 模式免登录也能用。"""
+93:         return bool(self.mineru_api_key)
+94: 
+95: 
+96: settings = Settings()
+97: 
+98: 
+99: def ensure_data_dir() -> None:
+100:     settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+
+(End of file - total 100 lines)
+</content>
+
+[assistant]
+Now let me check who calls the MCP client (the "client" question). Grep for `call_tool(` and tool wrappers usage.
+
+[assistant • grep]
+{"path":"D:\\zuixin\\backend","pattern":"call_tool\\(|ticket_tools\\.|kb_tools\\.|knowledge\\.(search|publish)"}
+
+[tool • grep]
+Found 28 matches
+
+backend\app\mcp\servers\kb_server.py
+Line 18:   主图的 `gather_evidence` 为了省一次子进程 IPC 直连 `knowledge.search`，走的是同一个 Milvus collection。
+
+backend\app\api\routes.py
+Line 182:     return ticket_tools.list_tickets(actor_of_context(context), status=status, limit=limit)
+Line 192:     return ticket_tools.list_approvals(actor_of_context(context), status=status, limit=limit)
+
+backend\app\agents\nodes\execute.py
+Line 29: def _call_tool(server: str, op: str, args: dict[str, Any], actor: dict[str, Any]) -> dict[str, Any]:
+Line 35:             return kb_tools.publish_kb_article(
+Line 43:             return kb_tools.search_kb(actor, args.get("query") or "", top_k=int(args.get("top_k") or 3))
+Line 49:         return ticket_tools.create_ticket(
+Line 57:         return ticket_tools.update_ticket(actor, args.get("ticket_no") or "", args.get("patch") or {})
+Line 59:         return ticket_tools.close_ticket(
+Line 66:         return ticket_tools.query_ticket(actor, args.get("ticket_no") or "")
+Line 68:         return ticket_tools.list_tickets(
+Line 94:         data = _call_tool(server, op, args, actor)
+
+backend\app\agents\tools\kb_tools.py
+Line 13:     return call_tool(SERVER, "search_kb", {"actor": actor, "query": query, "top_k": top_k})
+Line 24:     return call_tool(
+
+backend\app\agents\nodes\human_gate.py
+Line 150:         data = ticket_tools.save_approval(
+
+backend\app\agents\nodes\gather_evidence.py
+Line 60:         hits = knowledge.search(_policy_query(state), k=TOP_K, tenant_id=state.get("tenant_id"))
+Line 108:         result = ticket_tools.query_ticket(actor, ticket_no) or {}
+Line 128:         result = ticket_tools.list_tickets(actor, limit=limit)
+
+backend\app\agents\tools\mcp_client.py
+Line 6: - 工具是异步的，必须 `await tool.ainvoke(...)`，所以这里用一个同步门面 `call_tool()` 包住。
+Line 190:             result = await client.call_tool(name, args)
+Line 206: def call_tool(server: str, name: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+
+backend\app\agents\tools\ticket_tools.py
+Line 25:     return call_tool(
+Line 33:     return call_tool(SERVER, "query_ticket", {"actor": actor, "ticket_no": ticket_no})
+Line 37:     return call_tool(SERVER, "list_tickets", {"actor": actor, "status": status, "limit": limit})
+Line 41:     return call_tool(SERVER, "update_ticket", {"actor": actor, "ticket_no": ticket_no, "patch": patch})
+Line 51:     return call_tool(
+Line 75:     return call_tool(
+Line 93:     return call_tool(SERVER, "list_approvals", {"actor": actor, "status": status, "limit": limit})
+
+[assistant]
+
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\backend\\app\\agents\\nodes\\execute.py","limit":50,"offset":20}
+
+[tool • read]
+<path>D:\zuixin\backend\app\agents\nodes\execute.py</path>
+<type>file</type>
+<content>
+20: from typing import Any
+21: 
+22: from langgraph.runtime import Runtime
+23: 
+24: from ..state import TicketState, UserContext, actor_of
+25: 
+26: logger = logging.getLogger(__name__)
+27: 
+28: 
+29: def _call_tool(server: str, op: str, args: dict[str, Any], actor: dict[str, Any]) -> dict[str, Any]:
+30:     """按 server + op 分派到对应的工具封装；参数白名单在这里收口。"""
+31:     if server == "kb":
+32:         from ..tools import kb_tools
+33: 
+34:         if op == "publish_kb_article":
+35:             return kb_tools.publish_kb_article(
+36:                 actor,
+37:                 title=args.get("title") or "",
+38:                 content=args.get("content") or "",
+39:                 tags=args.get("tags") or [],
+40:                 change_note=args.get("change_note") or "",
+41:             )
+42:         if op == "search_kb":
+43:             return kb_tools.search_kb(actor, args.get("query") or "", top_k=int(args.get("top_k") or 3))
+44:         return {"ok": False, "error": {"code": "unsupported", "reason": f"kb server 不支持 {op}"}}
+45: 
+46:     from ..tools import ticket_tools
+47: 
+48:     if op == "create_ticket":
+49:         return ticket_tools.create_ticket(
+50:             actor,
+51:             title=args.get("title") or "",
+52:             description=args.get("description") or "",
+53:             urgency=args.get("urgency") or "medium",
+54:             category=args.get("category") or "其他",
+55:         )
+56:     if op == "update_ticket":
+57:         return ticket_tools.update_ticket(actor, args.get("ticket_no") or "", args.get("patch") or {})
+58:     if op == "close_ticket":
+59:         return ticket_tools.close_ticket(
+60:             actor,
+61:             args.get("ticket_no") or "",
+62:             resolution=args.get("resolution") or "",
+63:             notify_reporter=bool(args.get("notify_reporter")),
+64:         )
+65:     if op == "query_ticket":
+66:         return ticket_tools.query_ticket(actor, args.get("ticket_no") or "")
+67:     if op == "list_tickets":
+68:         return ticket_tools.list_tickets(
+69:             actor,
+
+(Showing lines 20-69 of 119. Use offset=70 to continue.)
+</content>
+
+[assistant]
+Now I have the full picture for question 1. Let me also confirm the API layer's direct ticket_tools usage (routes.py:182/192) — those bypass the graph and call MCP directly for list endpoints.
+
+Let me check scripts available for viewing data: list scripts dir.
+
+Also check `scripts/run_graph.py` subcommands (state, approvals, tools, graph, run, resume) and other scripts (env_status, ingest_docs, eval_rag, trace_run, ...).
+
+[assistant • pwsh]
+{"command":"Get-ChildItem scripts -Filter *.py | Select-Object Name; \"--- run_graph subcommands ---\"; Select-String -Path scripts\\run_graph.py -Pattern \"add_parser\\(\" | ForEach-Object { $_.Line.Trim() }","description":"List scripts and run_graph subcommands","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+
+Name          
+----          
+env_status.py 
+eval_rag.py   
+gen_kb_pdfs.py
+ingest_docs.py
+run_graph.py  
+trace_run.py  
+__init__.py   
+--- run_graph subcommands ---
+run = sub.add_parser("run", help="发一句话，跑到暂停或结束")
+resume = sub.add_parser("resume", help="从暂停点继续（确认 / 审批 / 补充信息）")
+state = sub.add_parser("state", help="看当前 State 快照（停在哪个节点、有哪些字段）")
+graph = sub.add_parser("graph", help="打印 Mermaid 图")
+tools = sub.add_parser("tools", help="列 MCP 工具与传输方式")
+chat = sub.add_parser("chat", help="交互式聊天")
+approvals = sub.add_parser("approvals", help="审批中心：列审批留痕（pending / approved / rejected）")
+
+
+
+
+[assistant]
+Now I have everything. Let me also verify the tickets table schema and approvals columns for the "how to view" answer. And whether there's a `/tickets` API endpoint (routes.py:182 list).
+ 
+Let me check routes for endpoints quickly to give the "data view" answer: /tickets, /approvals, /health, /tools.
+
+Also `docs/kb/md` for markdown source, `docs/kb/pdf` for PDFs.
+
+Let me grep routes for decorators.
+
+[assistant • grep]
+{"path":"D:\\zuixin\\backend\\app\\api\\routes.py","pattern":"@router\\.(get|post)"}
+
+[tool • grep]
+Found 6 matches
+
+backend\app\api\routes.py
+Line 46: @router.post("/chat/stream", summary="发一句话，流式返回（token / 节点进度 / 暂停）")
+Line 85: @router.post("/runs/{thread_id}/resume", summary="从暂停点继续（确认 / 审批 / 补参数）")
+Line 119: @router.get("/runs/{thread_id}", summary="会话当前快照（停在哪、状态、草稿卡片）")
+Line 170: @router.get("/graph/mermaid", summary="主图 Mermaid（和 CLI 的 graph 子命令同源）")
+Line 175: @router.get("/tickets", summary="工单列表（员工只看自己报的；主管看全租户）")
+Line 185: @router.get("/approvals", summary="审批中心（谁申请、什么事、批没批）")
+
+[assistant]
+Now I can answer both questions thoroughly.
+
+Question 1: "有了 mcp 服务端，你的客户端到底在哪？"
+
+Answer: three layers, all in this repo:
+1. **传输层客户端**：`backend/app/agents/tools/mcp_client.py` — 它才是真正的 "MCP client"：`MultiServerMCPClient(...)` (langchain-mcp-adapters)，通过 stdio 拉起两个子进程（`python backend/app/mcp/servers/ticket_server.py` / `kb_server.py`），JSON-RPC over stdin/stdout。`call_tool(server, name, args)` 是同步门面（节点是同步函数），内部 `asyncio.run` + 线程池。降级：`MCP_TRANSPORT=memory` 或子进程被沙箱禁掉时，改用 `fastmcp.Client(server.mcp)` 进程内直连同一份 server 代码。
+2. **类型化封装层**：`backend/app/agents/tools/ticket_tools.py` / `kb_tools.py` — 每个工具一个函数，统一注入 `actor`。
+3. **调用方**：
+   - 图内节点：`backend/app/agents/nodes/execute.py:29 _call_tool()`（唯一写节点，按 server+op 分派）、`backend/app/agents/nodes/gather_evidence.py:108,128`（查工单）、`backend/app/agents/nodes/human_gate.py:150`（save_approval）。
+   - API 直连：`backend/app/api/routes.py:182,192` 的 `/tickets`、`/approvals` 列表端点，不经过图直接调 MCP。
+   - 例外：知识检索 `gather_evidence.py:60` 走 `knowledge.search()` 直连 Milvus（省一次子进程 IPC），不走 MCP —— 这正是之前 kb server 挂掉没人发现的原因。
+
+Also mention: 客户端不是第三方可执行程序，就是 `mcp_client.py` 这 245 行；MCP 是"进程内库 + 子进程协议"，不是网络服务（没有端口）。
+
+Question 2: "所有的数据的涉及到的，到底怎么查看"
+
+Data inventory:
+1. 知识库（Milvus）：97 个 chunk，collection `smartdesk_kb`，落盘 `deploy/data/milvus/`（docker volume bind）。
+   - 查看 A（图形）：Attu http://localhost:8000 （docker compose 里的 attu，`deploy/.env` 的 `ATTU_PORT=8000`），连 milvus:19530，直接看 collection 的 data / 字段 / 索引。
+   - 查看 B（脚本）：`.\.venv\Scripts\python.exe -m scripts.run_graph run --thread t1 -m "发票怎么开？"`（看命中的三条 + 引用）
+   - 查看 C（SQL 式）：python 里 `vector_store.get_client().query(collection_name="smartdesk_kb", filter='tenant_id=="tenant-demo"', output_fields=["title","h1","h2","content"], limit=5)`
+   - 查看 D（源文件）：`docs/kb/md/`（MinerU 解析后的 markdown，入口）、`docs/kb/pdf/`（PDF 原件）、`docs/kb/src/`（生成 PDF 的源文）
+   - 统计：`kb health` → `python -c "from backend.app.agents.tools import mcp_client; print(mcp_client.call_tool('kb','health',{}))"`
+
+2. 会话状态（PostgreSQL / LangGraph checkpoint）：`deploy/data/pg/`，端口 5432，库 smartdesk。
+   - 查看 A：`.\.venv\Scripts\python.exe -m scripts.run_graph state --thread t2`（停在哪个节点、state 全量字段、待办卡片）
+   - 查看 B：`docker exec -it smartdesk-pg psql -U smartdesk -d smartdesk -c "\dt"` → 表 checkpoints / checkpoint_blobs / checkpoint_writes / checkpoint_migrations
+   - 查看 C：`select thread_id, count(*) from checkpoints group by 1 order by 2 desc;`
+   - 说明：本地没 PG 会回退到 SQLite `.data/agent.sqlite`（`AGENT_CHECKPOINT_BACKEND=sqlite`）。
+
+3. 工单库（SQLite）：`.data/tickets.sqlite`，表 tickets / approvals。
+   - 查看 A（图形/业务视角）：前端 TicketsView（http://localhost:5173「工单」页）、ApprovalView（「审批中心」页）；对应 `GET /api/v1/tickets`、`GET /api/v1/approvals`
+   - 查看 B（CLI）：`python -m scripts.run_graph approvals --status pending`；工具 `query_ticket` / `list_tickets` / `list_approvals`
+   - 查看 C（直接 SQL）：`sqlite3 .data/tickets.sqlite ".schema tickets"` 或用 python；或 DB Browser for SQLite / VS Code SQLite 插件打开这个文件
+   - 重置：删掉该文件 → 服务端 `_init_db()` 自动重建空表（演示前想清空就删）
+
+4. 评测报告：`docs/eval/report.md`（由 `scripts/eval_rag.py` 生成，51 条 golden set 在 `docs/eval/golden_set.*`?）—— 需要确认 golden set 路径。
+
+Hmm, I should check where the golden set lives. Let me grep eval_rag.py for the file path.
+
+5. 审计/trace：`scripts/trace_run.py`（跑一次并打印每个节点的耗时/输入输出？）. Let me check what it does — "trace_run" prints a run trace.
+
+6. 运行日志：uvicorn console；`.tmp_*` 只是我做实验的，已删。
+
+Let me quickly confirm golden set path and trace_run purpose to be accurate. Also check whether frontend has a 知识库 page (no, only Chat/Approval/Tickets).
+
+Let me read eval_rag.py head and trace_run.py head.
+
+[assistant • pwsh]
+{"command":"Get-Content scripts\\eval_rag.py -TotalCount 30; \"=== trace_run ===\"; Get-Content scripts\\trace_run.py -TotalCount 25","description":"Inspect eval and trace scripts headers","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+"""RAG 璇勬祴锛氭嬁 golden set 璺戞绱㈡寚鏍囷紝鍙€夎窇鐪熷疄鍥炵瓟缁熻寮曠敤鍑嗙‘鐜囥€?
+鐢ㄦ硶锛?    python -m scripts.eval_rag                  # 鍙瘎妫€绱紙蹇紝涓嶈皟鍥炵瓟妯″瀷锛?    python -m scripts.eval_rag --answers 20     # 棰濆璺?20 鏉″畬鏁撮摼璺紝缁熻寮曠敤鍑嗙‘鐜囦笌寤惰繜
+    python -m scripts.eval_rag --top-k 5        # 鏀规绱㈡潯鏁?
+golden set 鐨勬瘡鏉＄敤渚嬮暱杩欐牱锛堟寜銆屾枃妗?+ 灏忚妭銆嶆爣娉紝鎹?embedding 妯″瀷涔熶笉鐢ㄦ敼锛夛細
+    {"id": "g01", "query": "...", "tenant_id": "tenant-demo",
+     "expected_source": "01-鍛樺伐鎵嬪唽.md", "expected_section": "3.1 骞村亣", "must_include": "骞村亣"}
+
+浜у嚭锛?    docs/eval/report.md锛堣〃鏍?+ 姹囨€绘暟瀛楋紝鍙洿鎺ユ妱杩涚畝鍘嗭級
+    stdout 涓€琛?JSON锛堟柟渚?CI / 澶嶇幇锛?"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import statistics
+import sys
+import time
+import uuid
+from pathlib import Path
+from typing import Any
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from backend.app.agents import knowledge  # noqa: E402
+
+GOLDEN = ROOT_DIR / "docs" / "eval" / "golden_set.jsonl"
+REPORT = ROOT_DIR / "docs" / "eval" / "report.md"
+
+=== trace_run ===
+"""閫愯妭鐐硅窡璇诲伐鍏凤細璺戜竴鏉¤姹傦紝鎶婃瘡涓妭鐐广€屽啓浜嗗摢浜涘瓧娈点€嶄竴涓釜鎵撳嚭鏉ャ€?
+鐢ㄦ硶锛?    python -m scripts.trace_run -m "鍙戠エ鎬庝箞寮€"
+    python -m scripts.trace_run -m "甯垜寤轰釜宸ュ崟锛歏PN 杩炰笉涓婏紝褰卞搷 2 涓汉"
+    python -m scripts.trace_run -m "..." --resume '{"type":"decision","decision":"approve"}'
+
+瀹冩瘮 run 瀛愬懡浠ゅ鍋氱殑鍞竴涓€浠朵簨锛氱敤 stream_mode="updates" 鐪嬨€屾瘡涓€姝ヨ皝鍐欎簡浠€涔堛€嶏紝
+鑰屼笉鏄彧鐪嬫渶鍚庣粨鏋溿€傝繖鏄浠ｇ爜鏃舵渶闇€瑕佺殑瑙嗚銆?"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from typing import Any
+
+from backend.app.agents.graph import get_graph
+from backend.app.agents.state import UserContext, initial_state
+
+
+MAX = 88
+
+
+def _short(value: Any) -> str:
+    if isinstance(value, str):
+        text = value.replace("\n", "\\n")
+
+
+[assistant]
+Good: golden set at `docs/eval/golden_set.jsonl`, report at `docs/eval/report.md`.
+
+Now let me verify the actual running containers so I can tell the user what to expect (att ports). Let me check `docker ps`.
+
+Actually that requires docker running. Let me check quickly — it's useful to confirm Attu URL and PG port. If docker isn't running, I'll phrase conditionally.
+
+[assistant • pwsh]
+{"command":"docker ps --format \"{{.Names}}`t{{.Status}}`t{{.Ports}}\" 2>&1 | Select-Object -First 10","description":"List running docker containers","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+smartdesk-pg	Up 6 hours (healthy)	0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+smartdesk-attu	Up 6 hours	0.0.0.0:8000->3000/tcp, [::]:8000->3000/tcp
+smartdesk-milvus	Up 6 hours (healthy)	0.0.0.0:9091->9091/tcp, [::]:9091->9091/tcp, 0.0.0.0:19530->19530/tcp, [::]:19530->19530/tcp
+smartdesk-etcd	Up 6 hours (healthy)	2379-2380/tcp
+
+
+[assistant]
+All containers up: PG 5432, Attu 8000, Milvus 19530/9091, etcd.
+
+Let me quickly verify the psql table list works so I can give an exact command with results.
+
+[assistant • pwsh]
+{"command":"docker exec smartdesk-pg psql -U smartdesk -d smartdesk -c \"\\dt\" 2>&1 | Select-Object -First 15; \"--- threads ---\"; docker exec smartdesk-pg psql -U smartdesk -d smartdesk -c \"select thread_id, count(*) from checkpoints group by 1 order by 2 desc limit 5;\" 2>&1 | Select-Object -First 12","description":"Inspect postgres checkpoint tables","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+                 List of relations
+ Schema |         Name          | Type  |   Owner   
+--------+-----------------------+-------+-----------
+ app    | checkpoint_blobs      | table | smartdesk
+ app    | checkpoint_migrations | table | smartdesk
+ app    | checkpoint_writes     | table | smartdesk
+ app    | checkpoints           | table | smartdesk
+(4 rows)
+
+--- threads ---
+ thread_id | count 
+-----------+-------
+ r1        |    30
+ r2        |    26
+ r3        |    23
+ kb1       |    23
+ guide-a2  |    22
+(5 rows)
+
+
+
+[assistant]
+Note: tables are in schema `app` (not public) — interesting. Because DATABASE_URL probably has `?options=-csearch_path=app`? Hmm, it's in `app` schema. Anyway.
+
+So a query without schema prefix fails? `select ... from checkpoints` worked — because search_path includes app. Good.
+
+Now I have everything to answer. Let me also confirm the frontend pages & API base path: `/api/v1/tickets`, `/api/v1/approvals`. And frontend proxy.
+
+Also: where's the ticket DB path — `.data/tickets.sqlite` at repo root.
+
+One more useful thing for question 2: an "all-in-one" health check command: `python -m scripts.env_status` shows milvus/pg/ckpt status. Let me look at env_status output quickly to describe it accurately. Actually I know it prints DEEPSEEK/DASHSCOPE keys, checkpoint backend, hybrid mode. Good enough.
+
+Let me write the answer now — structured, with a table for data and exact commands. Use file links.
+
+For Q1, a diagram-ish flow:
+
+```
+ChatView / CLI / HTTP
+   └─ graph.invoke()
+        └─ 节点 (execute / gather_evidence / human_gate)
+             └─ ticket_tools.py / kb_tools.py        ← 类型化封装（注入 actor）
+                  └─ mcp_client.call_tool()          ← 真·MCP 客户端（唯一一处）
+                       ├─ stdio: 起子进程 python backend/app/mcp/servers/ticket_server.py
+                       └─ memory 降级: fastmcp.Client(ticket_mcp) 进程内
+```
+
+And mention routes.py direct calls for /tickets and /approvals.
+
+Also clarify: "MCP 不是网络服务，没有端口" — client and server communicate over stdin/stdout JSON-RPC; the "client" is a library inside the backend process. And the demo path: `scripts.run_graph tools` prints transport info.
+
+For Q2, table:
+
+| 数据 | 存在哪 | 怎么看 |
+- 知识库 chunk 97 条 → Milvus collection smartdesk_kb，宿主机 `deploy/data/milvus/` → Attu http://localhost:8000 / CLI 提问 / python query / html
+- 知识库原文 → `docs/kb/src/`（生成源）、`docs/kb/pdf/`（PDF）、`docs/kb/md/`（MinerU 解析结果，入库就是读这个）
+- 会话状态/中断点 → PostgreSQL 表 app.checkpoints（`deploy/data/pg/`）→ `run_graph state --thread`、psql、`/runs/{thread_id}` API
+- 工单 + 审批 → SQLite `.data/tickets.sqlite` → 前端两页、`run_graph approvals`、`/tickets` `/approvals` API、sqlite 直接查
+- 评测 → `docs/eval/golden_set.jsonl` + `docs/eval/report.md`
+- 节点逐步写什么 → `scripts.trace_run -m "..."`（stream_mode=updates）
+- 环境自检 → `python -m scripts.env_status`
+
+Also mention reset commands: 删 `.data/tickets.sqlite` 重建工单库；`ingest_docs --to-milvus` 重建知识库（force drop）。
+
+Let me double check ingest_docs args for force.
+
+Let me grep ingest_docs argparse.
+
+[assistant • pwsh]
+{"command":"Select-String -Path scripts\\ingest_docs.py -Pattern \"add_argument\\(\" | ForEach-Object { $_.Line.Trim() }","description":"List ingest_docs arguments","workdir":"D:\\zuixin"}
+
+[tool • pwsh]
+parser.add_argument("--source", default=None, help="PDF 目录（默认 settings.kb_source_dir；给了 --md 就不扫）")
+parser.add_argument("--pdf", nargs="*", default=[], help="显式指定 PDF 文件（可多个）")
+parser.add_argument("--md", nargs="*", default=[], help="直接切现成 Markdown（跳过 MinerU）")
+parser.add_argument("--mode", default=None, choices=["flash", "precision"], help="MinerU 解析模式")
+parser.add_argument("--ocr", action="store_true", help="扫描件才需要（更慢）")
+parser.add_argument("--tenant", default="tenant-demo", help="租户 id")
+parser.add_argument("--chunk-size", type=int, default=CHUNK_SIZE)
+parser.add_argument("--chunk-overlap", type=int, default=CHUNK_OVERLAP)
+parser.add_argument("--out", default="", help="把 chunk 写成 jsonl 的路径（可选）")
+parser.add_argument("--save-md", action="store_true", help="把 MinerU 解析出的 Markdown 存到 docs/kb/md/")
+parser.add_argument("--to-milvus", action="store_true", help="写入 Milvus（入库）")
+parser.add_argument("--force", action="store_true", help="配合 --to-milvus：先 drop 重建 collection")
+parser.add_argument("--limit", type=int, default=0, help="最多处理几个文件（调试用）")

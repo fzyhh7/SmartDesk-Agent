@@ -1,7 +1,10 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 /**
- * 宸︽爮锛氬搧鐗?+ 浼氳瘽鎼滅储 + 涓変釜椤甸潰鍏ュ彛 + 鏈満浼氳瘽鍒楄〃 + 搴曢儴韬唤鍗°€? *
- * 浼氳瘽鍒楄〃鏄?鏈湴绱㈠紩"锛堣 stores/sessions.ts锛夛細鐐逛竴鏉″氨鏄妸鑱婂ぉ椤垫寚鍚戦偅涓?thread_id锛? * 椤甸潰浼氬幓 GET /runs/{thread_id} 鎶婇椄闂ㄥ崱鐗囧拰鐘舵€侀噸鏂扮敾鍑烘潵銆? */
+ * 左栏：品牌 + 会话搜索 + 三个页面入口 + 本机会话列表 + 底部身份卡。
+ *
+ * 会话列表是"本地索引"（见 stores/sessions.ts）：点一条就是把聊天页指向那个 thread_id，
+ * 页面会去 GET /runs/{thread_id} 把闸门卡片和状态重新画出来。
+ */
 
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -20,16 +23,16 @@ const ui = useUi()
 const filter = ref('')
 
 const NAV = [
-  { path: '/chat', label: '浼氳瘽宸ヤ綔鍙?, icon: 'chat' },
-  { path: '/approvals', label: '瀹℃壒涓績', icon: 'shield', badge: true },
-  { path: '/tickets', label: '宸ュ崟鐪嬫澘', icon: 'ticket' },
+  { path: '/chat', label: '会话工作台', icon: 'chat' },
+  { path: '/approvals', label: '审批中心', icon: 'shield', badge: true },
+  { path: '/tickets', label: '工单看板', icon: 'ticket' },
 ]
 
 const STATE_TEXT: Record<string, string> = {
-  idle: '绌洪棽',
-  running: '杩涜涓?,
-  paused: '鍋滃湪闂搁棬',
-  done: '宸插畬鎴?,
+  idle: '空闲',
+  running: '进行中',
+  paused: '停在闸门',
+  done: '已完成',
 }
 
 const filtered = computed(() => {
@@ -69,18 +72,18 @@ function newSession() {
       <div class="brand-mark"><AppIcon name="spark" :size="17" /></div>
       <div class="brand-text">
         <div class="brand-name">SmartDesk-Agent</div>
-        <div class="brand-sub">浼佷笟鏈嶅姟鍙?Agent</div>
+        <div class="brand-sub">企业服务台 Agent</div>
       </div>
     </div>
 
     <label class="cmdk">
       <AppIcon name="search" :size="14" />
-      <input v-model="filter" placeholder="鎼滅储浼氳瘽 / 鍗曞彿" spellcheck="false" />
-      <kbd>鈱楰</kbd>
+      <input v-model="filter" placeholder="搜索会话 / 单号" spellcheck="false" />
+      <kbd>⌘K</kbd>
     </label>
 
     <nav class="nav">
-      <div class="nav-label">宸ヤ綔鍖?/div>
+      <div class="nav-label">工作区</div>
       <button
         v-for="item in NAV"
         :key="item.path"
@@ -96,7 +99,7 @@ function newSession() {
     </nav>
 
     <div class="sessions">
-      <div class="nav-label">鏈満浼氳瘽</div>
+      <div class="nav-label">本机会话</div>
       <button
         v-for="item in filtered"
         :key="item.threadId"
@@ -108,13 +111,13 @@ function newSession() {
         <span class="dot" :class="dotClass(item)" />
         <span class="body">
           <span class="t">{{ item.title }}</span>
-          <span class="meta">{{ STATE_TEXT[item.state] ?? item.state }} 路 {{ relTime(item.updatedAt) }}</span>
+          <span class="meta">{{ STATE_TEXT[item.state] ?? item.state }} · {{ relTime(item.updatedAt) }}</span>
         </span>
       </button>
 
       <button type="button" class="session new" @click="newSession">
         <AppIcon name="plus" :size="13" />
-        <span class="t">鏂颁細璇?/span>
+        <span class="t">新会话</span>
       </button>
     </div>
 
@@ -319,4 +322,3 @@ function newSession() {
   padding: 10px;
 }
 </style>
-

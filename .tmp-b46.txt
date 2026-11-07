@@ -1,0 +1,1451 @@
+[assistant • todo_write]
+{"todos":[{"content":"更新 scripts/eval_rag.py 与 scripts/env_status.py，实测对比 RRF vs RRF+Rerank（含端到端评测）","status":"completed"},{"content":"检查全仓代码注释、前端文案与文档（report.md, README.md, 讲解卡.md, 前端视图等）中的检索说明与评测指标并全部同步更新","status":"in_progress"},{"content":"运行后端编译检查、前端 tsc/build 构建、清理临时文件与测试线程并向用户汇报","status":"pending"}]}
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\docs\\eval\\report.md","limit":120,"offset":1}
+
+[assistant • grep]
+{"pattern":"96\\.08|96\\.1|82\\.35|892|cross-encoder|Cross-Encoder|精排|rerank|RRFRanker|g33|g49"}
+
+[tool • todo_write]
+Updated todo list: 1 pending, 1 in progress, 1 completed.
+
+[tool • read]
+<path>D:\zuixin\docs\eval\report.md</path>
+<type>file</type>
+<content>
+1: # 检索与引用评测报告
+2: 
+3: - 用例：`docs/eval/golden_set.jsonl`，共 **51** 条（标注到「文档 + 小节」，例如 `01-员工手册.md · 3.1 年假`）
+4: - 检索链路：Milvus 混合检索（dense + 内置 BM25 + `RRFRanker(k=60)` 粗排 Top-10） → DashScope `gte-rerank-v2` Cross-Encoder 精排取 Top-3
+5: - 环境：向量库 backend=milvus · collection=smartdesk_kb · chunks=97
+6: 
+7: ## 1. 检索指标（51 条）
+8: 
+9: | 指标 | 数值 | 含义 |
+10: |---|---|---|
+11: | Recall@1 | **86.27%** | 期望小节排第一的比例 |
+12: | Recall@3 | **98.04%** | 期望小节进前 3 的比例 |
+13: | MRR@3 | **0.9150** | 期望小节排名倒数的平均值（越接近 1 越好） |
+14: | 首条关键词命中率 | 96.08% | 首条检索结果里出现期望关键词 |
+15: | 检索延迟 | 平均 382.3 ms / P95 485.8 ms | 单次检索全链路 |
+16: 
+17: ## 2. 消融对照：纯 RRF 粗排 vs RRF + Cross-Encoder 精排
+18: 
+19: | 方案 | Recall@1 | Recall@3 | MRR@3 | 首条关键词命中 | 平均 / P95 延迟 |
+20: |---|---|---|---|---|---|
+21: | Dense + BM25 + RRF (Top-3) | 82.35% | 96.08% | 0.8922 | 94.12% | 235.0 / 329.5 ms |
+22: | **+ `gte-rerank-v2` 精排 (Top-10 → Top-3)** | **86.27%** (+3.92pp) | **98.04%** (+1.96pp) | **0.9150** (+0.0228) | **96.08%** | 382.3 / 485.8 ms |
+23: 
+24: ### 精排纠偏的典型样本
+25: 
+26: | id | 问句 | 期望小节 | RRF 排名 | +精排后排名 |
+27: |---|---|---|---|---|
+28: | g03 | 婚假有几天，要在系统里提前多久申请 | 01-员工手册.md · 3.4 其他假期 | #2 | **#1** |
+29: | g33 | 已经用掉的服务时长能不能退 | 04-客户订单退款与售后规则.md · 5.1 已消耗与定制内容 | 未进 Top-3 | **#3** |
+30: | g41 | 接口升级或者停服会提前通知吗 | 05-开放平台API限流与配额说明.md · 6.1 版本与变更 | #2 | **#1** |
+31: | g42 | 核心系统全挂了算几级故障，多久必须响应 | 06-IT服务级别与工单处理规范.md · 2.1 分级标准 | #2 | **#1** |
+32: | g43 | 工单一直没人处理会升级给谁 | 06-IT服务级别与工单处理规范.md · 5.1 一线、二线与研发 | #2 | **#1** |
+33: 
+34: ## 3. 端到端回答（前 20 条，真模型）
+35: 
+36: | 指标 | 数值 | 含义 |
+37: |---|---|---|
+38: | 引用准确率 | **100.00%** | 引用的资料里含期望小节 |
+39: | 引用标记率 | 100.00% | 回答正文带 `[1]` 这类标注 |
+40: | 关键词落进回答 | 95.00% | 回答正文出现期望关键词 |
+41: | 端到端延迟 | 平均 3.37 s / P95 4.22 s | 分类 + 检索精排 + 生成 |
+42: | 失败条数 | 0 | 抛异常的用例 |
+43: 
+44: ## 4. 端到端逐条
+45: 
+46: | id | 问句 | 期望 | 引用到的 | 引用命中 | 耗时(s) |
+47: |---|---|---|---|---|---|
+48: | g01 | 年假天数按工龄怎么算，入职满三年是几天 | 01-员工手册.md · 3.1 年假 | 01-员工手册.md · 第 3 章 假期管理 · 3.1 年假、01-员工手册.md · 第 3 章 假期管理 · 3.3 事假、01-员工手册.md · 第 3 章 假期管理 · 3.4 其他假期 | ✓ | 3.34 |
+49: | g02 | 请病假需要提交什么证明材料 | 01-员工手册.md · 3.2 病假 | 01-员工手册.md · 第 3 章 假期管理 · 3.2 病假、01-员工手册.md · 第 3 章 假期管理 · 3.3 事假、02-财务报销与开票管理制度.md · 第 4 章 发票要求 · 4.3 电子发票 | ✓ | 3.62 |
+50: | g03 | 婚假有几天，要在系统里提前多久申请 | 01-员工手册.md · 3.4 其他假期 | 01-员工手册.md · 第 3 章 假期管理 · 3.4 其他假期、01-员工手册.md · 第 3 章 假期管理 · 3.5 假期申请流程、01-员工手册.md · 第 3 章 假期管理 · 3.3 事假 | ✓ | 2.76 |
+51: | g04 | 上下班时间是怎么规定的，可以弹性到几点 | 01-员工手册.md · 2.1 工作时间 | 01-员工手册.md · 第 2 章 工作时间与考勤 · 2.1 工作时间、06-IT服务级别与工单处理规范.md · 第 2 章 工单分级 · 3.1 计时规则、01-员工手册.md · 第 2 章 工作时间与考勤 · 2.3 加班与调休 | ✓ | 3.25 |
+52: | g05 | 忘记打卡算缺勤吗，怎么补卡 | 01-员工手册.md · 2.2 考勤异常 | 01-员工手册.md · 第 2 章 工作时间与考勤 · 2.2 考勤异常、01-员工手册.md · 第 2 章 工作时间与考勤 · 2.3 加班与调休、03-账号与权限管理办法.md · 第 5 章 变更、离职与回收 · 5.2 离职 | ✓ | 3.18 |
+53: | g06 | 周末加班能不能换成调休 | 01-员工手册.md · 2.3 加班与调休 | 01-员工手册.md · 第 2 章 工作时间与考勤 · 2.3 加班与调休、01-员工手册.md · 第 3 章 假期管理 · 3.5 假期申请流程、01-员工手册.md · 第 2 章 工作时间与考勤 · 2.2 考勤异常 | ✓ | 4.22 |
+54: | g07 | 每个月几号发工资 | 01-员工手册.md · 4.1 发薪日 | 01-员工手册.md · 第 4 章 薪酬与福利 · 4.1 发薪日、02-财务报销与开票管理制度.md · 第 3 章 报销流程 · 3.2 事后报销、01-员工手册.md · 第 4 章 薪酬与福利 · 4.2 社会保险与公积金 | ✓ | 2.99 |
+55: | g08 | 离职以后保密义务还管多久 | 01-员工手册.md · 5.2 保密义务 | 01-员工手册.md · 第 5 章 行为规范与保密 · 5.2 保密义务、03-账号与权限管理办法.md · 第 5 章 变更、离职与回收 · 5.2 离职、03-账号与权限管理办法.md · 第 5 章 变更、离职与回收 · 5.3 长期未使用账号 | ✓ | 2.91 |
+56: | g09 | 实习生和外包人员适不适用员工手册 | 01-员工手册.md · 1.1 适用范围 | 01-员工手册.md · 第 1 章 总则 · 1.1 适用范围、01-员工手册.md · 第 1 章 总则 · 1.2 手册效力、03-账号与权限管理办法.md · 第 2 章 账号申请与开通 · 2.2 实习生与外包账号 | ✓ | 3.33 |
+57: | g10 | 请假要提前几个工作日提交审批 | 01-员工手册.md · 3.5 假期申请流程 | 01-员工手册.md · 第 3 章 假期管理 · 3.3 事假、01-员工手册.md · 第 3 章 假期管理 · 3.1 年假、01-员工手册.md · 第 3 章 假期管理 · 3.5 假期申请流程 | ✓ | 3.36 |
+58: | g11 | 出差住宿一晚最多能报多少钱 | 02-财务报销与开票管理制度.md · 2.1 差旅与业务费用标准 | 02-财务报销与开票管理制度.md · 第 2 章 费用标准 · 2.1 差旅与业务费用标准、02-财务报销与开票管理制度.md · 第 4 章 发票要求 · 4.2 票种要求、02-财务报销与开票管理制度.md · 第 2 章 费用标准 · 2.2 超标处理 | ✓ | 2.94 |
+59: | g12 | 报销金额超过标准了要怎么处理 | 02-财务报销与开票管理制度.md · 2.2 超标处理 | 02-财务报销与开票管理制度.md · 第 2 章 费用标准 · 2.2 超标处理、02-财务报销与开票管理制度.md · 第 1 章 总则 · 1.2 基本原则、02-财务报销与开票管理制度.md · 第 3 章 报销流程 · 3.1 事前申请 | ✓ | 3.49 |
+60: | g13 | 出差前要先提事前申请吗 | 02-财务报销与开票管理制度.md · 3.1 事前申请 | 02-财务报销与开票管理制度.md · 第 3 章 报销流程 · 3.1 事前申请、05-开放平台API限流与配额说明.md · 第 4 章 配额调整 · 4.1 提额申请、01-员工手册.md · 第 3 章 假期管理 · 3.5 假期申请流程 | ✓ | 2.83 |
+61: | g14 | 报销单金额多少需要谁来审批 | 02-财务报销与开票管理制度.md · 3.3 审批权限 | 02-财务报销与开票管理制度.md · 第 3 章 报销流程 · 3.3 审批权限、04-客户订单退款与售后规则.md · 第 4 章 审批权限 · 4.1 分级审批、02-财务报销与开票管理制度.md · 第 6 章 违规与例外 · 6.2 例外审批 | ✓ | 2.78 |
+62: | g15 | 发票抬头和纳税人识别号填错了会怎样 | 02-财务报销与开票管理制度.md · 4.1 抬头与税号 | 02-财务报销与开票管理制度.md · 第 4 章 发票要求 · 4.1 抬头与税号、02-财务报销与开票管理制度.md · 第 5 章 对外开票 · 5.1 开票申请流程、02-财务报销与开票管理制度.md · 第 4 章 发票要求 · 4.3 电子发票 | ✓ | 4.7 |
+63: | g16 | 电子发票怎么提交给财务，要打印吗 | 02-财务报销与开票管理制度.md · 4.3 电子发票 | 02-财务报销与开票管理制度.md · 第 4 章 发票要求 · 4.3 电子发票、02-财务报销与开票管理制度.md · 第 5 章 对外开票 · 5.1 开票申请流程、02-财务报销与开票管理制度.md · 第 4 章 发票要求 · 4.2 票种要求 | ✓ | 2.87 |
+64: | g17 | 给客户开增值税发票要走什么流程 | 02-财务报销与开票管理制度.md · 5.1 开票申请流程 | 02-财务报销与开票管理制度.md · 第 5 章 对外开票 · 5.1 开票申请流程、02-财务报销与开票管理制度.md · 第 4 章 发票要求 · 4.2 票种要求、02-财务报销与开票管理制度.md · 第 4 章 发票要求 · 4.3 电子发票 | ✓ | 3.71 |
+65: | g18 | 开票内容能不能随便写，可以开成办公用品吗 | 02-财务报销与开票管理制度.md · 5.2 开票内容规范 | 02-财务报销与开票管理制度.md · 第 5 章 对外开票 · 5.2 开票内容规范、02-财务报销与开票管理制度.md · 第 5 章 对外开票 · 5.1 开票申请流程、02-财务报销与开票管理制度.md · 第 5 章 对外开票 · 5.3 作废与红冲 | ✓ | 3.74 |
+66: | g19 | 发票开错了怎么作废或者红冲 | 02-财务报销与开票管理制度.md · 5.3 作废与红冲 | 02-财务报销与开票管理制度.md · 第 5 章 对外开票 · 5.3 作废与红冲、02-财务报销与开票管理制度.md · 第 4 章 发票要求 · 4.3 电子发票、02-财务报销与开票管理制度.md · 第 5 章 对外开票 · 5.1 开票申请流程 | ✓ | 4.13 |
+67: | g20 | 虚假报销会被怎么处理 | 02-财务报销与开票管理制度.md · 6.1 违规处理 | 02-财务报销与开票管理制度.md · 第 6 章 违规与例外 · 6.1 违规处理、02-财务报销与开票管理制度.md · 第 2 章 费用标准 · 2.2 超标处理、02-财务报销与开票管理制度.md · 第 3 章 报销流程 · 3.2 事后报销 | ✓ | 3.25 |
+68: 
+69: ## 5. 未命中的用例（用于调参）
+70: 
+71: | id | 问句 | 期望 | 实际返回 |
+72: |---|---|---|---|
+73: | g49 | 我能查到别的子公司的工单吗 | 07-多租户与数据隔离规范.md · 2.3 跨租户访问 | 07-多租户与数据隔离规范.md · 第 1 章 目的与背景 · 1.2 租户模型、06-IT服务级别与工单处理规范.md · 第 4 章 工单生命周期 · 4.2 催办与自动关闭、06-IT服务级别与工单处理规范.md · 第 2 章 工单分级 · 2.1 分级标准 |
+74: 
+75: ## 6. 怎么复现
+76: 
+77: ```bash
+78: cd deploy && docker compose up -d                      # 起 PG / Milvus / attu
+79: .venv/Scripts/python.exe -m scripts.ingest_docs --md docs/kb/md --to-milvus
+80: .venv/Scripts/python.exe -m scripts.eval_rag --compare # 跑纯 RRF vs RRF+精排 A/B 对照
+81: .venv/Scripts/python.exe -m scripts.eval_rag --compare --answers 20  # 加端到端引用指标
+82: ```
+
+(End of file - total 82 lines)
+</content>
+
+[tool • grep]
+Found 250 of 407 matches
+
+README.md
+Line 21: | **混合检索** | Milvus 稠密 1024 维 + 服务端内置中文 BM25，`RRFRanker(k=60)` 融合，带 `tenant_id` 过滤 |
+Line 22: | **有评测** | 51 条标注问句：Recall@3 **96.08%**、MRR@3 **0.892**；20 条端到端用例引用准确率 **100%** |
+Line 79: | 检索 | Milvus（稠密 1024 维 + 内置 BM25，服务端 `RRFRanker(k=60)`） |
+Line 153: | Recall@1 / Recall@3 | 82.35% / **96.08%** |
+Line 154: | MRR@3 | 0.892 |
+Line 192: - 没有 cross-encoder 精排：两条检索未命中（`g33` / `g49`）需要精排才能补；
+
+AI-Agent简历项目规划.md
+Line 109: | 混合检索 | `AnnSearchRequest(data=[...], anns_field="dense", param={"metric_type":"COSINE"}, limit=3, filter=...)` × 稠密/稀疏 + `client.hybrid_search(collection_name=..., reqs=..., ranker=..., limit=..., output_fields=[...])`；`WeightedRanker(0.5,0.5)` / `RRFRanker(k=60)`（1/(k+rank)）；加权前需 Min-Max / Z-Score / Softmax 归一化 | 召回率提升核心 | ★ |
+Line 110: | 精排 | `Function(name="dashscope_semantic_ranker", input_field_names=["content"], function_type=FunctionType.RERANK, params={"reranker":"model","provider":"ali","model_name":"gte-rerank-v2","queries":[query]})`；两阶段：先 fetch_k 初筛再 rerank 到 k | 准确率提升核心（贵，只对候选做） | ★ |
+Line 112: | LangChain 集成 | `from langchain_milvus import Milvus, BM25BuiltInFunction`；`Milvus(embeddings, collection_name=..., builtin_function=BM25BuiltInFunction(analyzer_params={"type":"chinese"}), vector_field=["dense","sparse"], connection_args={"uri":...}, drop_old=...)`；`similarity_search_with_score(query, k=, ranker_type="weighted"/"rrf", ranker_params={"weights":[0.4,0.6]}/{"k":60}, expr=..., fetch_k=5, reranker=...)` | 业务代码直接调用 | ★ |
+Line 153: 3. **Milvus 混合检索**：稠密 + BM25 稀疏 + RRF 融合 + Cross-Encoder 精排 + 元数据过滤。
+Line 170: - **A/B 实验**：RRF vs Weighted、有无 rerank、chunk 500 vs 800，各给一组数据。
+Line 346: 3. 检索：`client.hybrid_search([AnnSearchRequest(dense, COSINE), AnnSearchRequest(sparse, BM25)], ranker=RRFRanker(k=60))`——融合在服务端，客户端只搬字段。
+Line 375: **待做**：Vue3 三页（会话 / 审批 / 检索调试）、可观测（LangSmith trace + 节点耗时 + token 成本）、知识库扩到 50–200 篇真实文档、Cross-Encoder 精排（gte-rerank-v2）、JWT 换掉请求头身份。
+Line 383: | 检索 Recall@1 | **82.35%** | 期望小节排第一 |
+Line 384: | 检索 Recall@3 | **96.08%** | 期望小节进前 3 |
+Line 385: | MRR@3 | **0.8922** | 排名倒数的均值 |
+Line 395: > 简历可直接抄：51 条真实问句评测集（对 97 个 chunk）Recall@3 96.08%、MRR 0.892，20 条端到端引用准确率 100%、P95 约 3 s（慢时 6 s，模型侧排队）；工具层 3 角色鉴权，越权请求在 server 侧被拒。
+Line 426: - 用 **Milvus 官方混合检索**（dense + 内置 BM25 + 服务端 `RRFRanker(k=60)`）做多租户知识库检索，答案强制带 `[1][2]` 引用（精确到"第 X 章 · X.Y 节"）；检索不到时明确"知识库没有这条"并给三个下一步，而不是编。
+Line 431: - 自建 **51 条 golden set**（真实问句对 97 chunk）做回归评测：检索 **Recall@3 96.08% / Recall@1 82.35% / MRR 0.892**，20 条端到端用例**引用准确率 100%**，检索 P95 310–530 ms、端到端 P95 2.9–6.4 s（多次实测，随模型延迟波动）。
+Line 439: | 使用 Milvus 做向量检索，效果很好。 | Milvus 稠密+BM25 混合检索（RRF k=60）+ gte-rerank-v2 精排，Recall@5 从 0.61 → 0.87。 | 有方案对比、有指标 |
+Line 463: 9. 两阶段检索（Bi-Encoder 初筛 + Cross-Encoder 精排）为什么便宜？`fetch_k` 怎么定？
+Line 482: | RAG / 向量数据库 | Milvus 双路混合检索 + 精排 + 评测报告 |
+Line 600: | 第2节 Milvus向量库 | 1.7 | 混合检索、精排、过滤、LangChain 集成 |
+Line 608: - Milvus 混合检索与重排：[milvus.io/docs/zh/v2.6.x/reranking.md](https://milvus.io/docs/zh/v2.6.x/reranking.md)
+
+docs\讲解卡.md
+Line 62: | `rag/vector_store.py` | Milvus 读写 | 稠密 1024 + 内置 BM25 双路召回，服务端 `RRFRanker(k=60)` 融合取 Top3 |
+Line 171: - 没做**精排**：两条检索未命中要靠 cross-encoder（gte-rerank-v2）才能补。
+
+docs\eval\report.md
+Line 4: - 检索链路：Milvus 混合检索（dense + 内置 BM25 + `RRFRanker(k=60)` 粗排 Top-10） → DashScope `gte-rerank-v2` Cross-Encoder 精排取 Top-3
+Line 14: | 首条关键词命中率 | 96.08% | 首条检索结果里出现期望关键词 |
+Line 17: ## 2. 消融对照：纯 RRF 粗排 vs RRF + Cross-Encoder 精排
+Line 21: | Dense + BM25 + RRF (Top-3) | 82.35% | 96.08% | 0.8922 | 94.12% | 235.0 / 329.5 ms |
+Line 22: | **+ `gte-rerank-v2` 精排 (Top-10 → Top-3)** | **86.27%** (+3.92pp) | **98.04%** (+1.96pp) | **0.9150** (+0.0228) | **96.08%** | 382.3 / 485.8 ms |
+Line 24: ### 精排纠偏的典型样本
+Line 26: | id | 问句 | 期望小节 | RRF 排名 | +精排后排名 |
+Line 29: | g33 | 已经用掉的服务时长能不能退 | 04-客户订单退款与售后规则.md · 5.1 已消耗与定制内容 | 未进 Top-3 | **#3** |
+Line 41: | 端到端延迟 | 平均 3.37 s / P95 4.22 s | 分类 + 检索精排 + 生成 |
+Line 73: | g49 | 我能查到别的子公司的工单吗 | 07-多租户与数据隔离规范.md · 2.3 跨租户访问 | 07-多租户与数据隔离规范.md · 第 1 章 目的与背景 · 1.2 租户模型、06-IT服务级别与工单处理规范.md · 第 4 章 工单生命周期 · 4.2 催办与自动关闭、06-IT服务级别与工单处理规范.md · 第 2 章 工单分级 · 2.1 分级标准 |
+Line 80: .venv/Scripts/python.exe -m scripts.eval_rag --compare # 跑纯 RRF vs RRF+精排 A/B 对照
+
+docs\eval\golden_set.jsonl
+Line 33: {"id": "g33", "query": "已经用掉的服务时长能不能退", "tenant_id": "tenant-demo", "expected_source": "04-客户订单退款与售后规则.md", "expected_section": "5.1 已消耗与定制内容", "must_include": "消耗"}
+Line 49: {"id": "g49", "query": "我能查到别的子公司的工单吗", "tenant_id": "tenant-demo", "expected_source": "07-多租户与数据隔离规范.md", "expected_section": "2.3 跨租户访问", "must_include": "跨租户"}
+
+scripts\eval_rag.py
+Line 1: """RAG 评测：拿 golden set 跑检索指标（支持 RRF 粗排 vs RRF+Rerank 精排 A/B 对照），可选跑真实回答统计引用准确率。
+Line 4:     python -m scripts.eval_rag                  # 默认评 RRF + Cross-Encoder 精排
+Line 6:     python -m scripts.eval_rag --no-rerank      # 强制关闭精排，仅评纯 RRF 粗排
+Line 10: golden set 的每条用例长这样（按「文档 + 小节」标注，换 embedding/rerank 模型也不用改）：
+Line 82:     rerank: bool | None = None,
+Line 84:     use_rerank = settings.rerank_active if rerank is None else (rerank and bool(settings.rerank_api_key))
+Line 86:     knowledge.search(cases[0]["query"], k=top_k, tenant_id=cases[0]["tenant_id"], rerank=use_rerank)
+Line 96:                 rerank=use_rerank,
+Line 120:         "mode": f"hybrid+rerank({settings.rerank_model})" if use_rerank else "hybrid(RRF)",
+Line 121:         "rerank": use_rerank,
+Line 205:     if rs["rerank"]:
+Line 207:             f"- 检索链路：Milvus 混合检索（dense + 内置 BM25 + `RRFRanker(k=60)` 粗排 Top-{settings.rerank_candidate_k}）"
+Line 208:             f" → DashScope `{settings.rerank_model}` Cross-Encoder 精排取 Top-{rs['top_k']}"
+Line 211:         lines.append(f"- 检索链路：Milvus 服务端混合检索（dense + 内置 BM25 + `RRFRanker(k=60)`），top_k={rs['top_k']}")
+Line 232:         lines.append("## 2. 消融对照：纯 RRF 粗排 vs RRF + Cross-Encoder 精排\n")
+Line 242:             f"| **+ `{settings.rerank_model}` 精排 (Top-{settings.rerank_candidate_k} → Top-{rs['top_k']})** | "
+Line 249:         # 列出精排改善的典型样本
+Line 261:             lines.append("### 精排纠偏的典型样本\n")
+Line 262:             lines.append("| id | 问句 | 期望小节 | RRF 排名 | +精排后排名 |")
+Line 278:         lines.append(f"| 端到端延迟 | 平均 {an['elapsed_s_avg']} s / P95 {an['elapsed_s_p95']} s | 分类 + 检索精排 + 生成 |")
+Line 313:     lines.append(".venv/Scripts/python.exe -m scripts.eval_rag --compare # 跑纯 RRF vs RRF+精排 A/B 对照")
+Line 323:     parser.add_argument("--no-rerank", action="store_true", help="强制关闭 Cross-Encoder 精排，仅评纯 RRF")
+Line 324:     parser.add_argument("--compare", action="store_true", help="同时跑纯 RRF 与 RRF+精排，输出消融对照表")
+Line 332:         baseline = evaluate_retrieval(cases, top_k, rerank=False)
+Line 333:         retrieval = evaluate_retrieval(cases, top_k, rerank=True)
+Line 334:     elif args.no_rerank:
+Line 335:         retrieval = evaluate_retrieval(cases, top_k, rerank=False)
+Line 337:         retrieval = evaluate_retrieval(cases, top_k, rerank=None)
+
+scripts\env_status.py
+Line 20:     ("DASHSCOPE_API_KEY", "Embedding + Rerank（text-embedding-v4 / gte-rerank-v2）"),
+Line 60:         f"hybrid + rerank（dense+BM25+RRF Top-{settings.rerank_candidate_k} → {settings.rerank_model}）"
+Line 61:         if settings.rerank_active
+Line 65:     print(f"  Rerank 启用     : {settings.rerank_active}")
+
+uv.lock
+Line 118:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/67/52/5b9ccb8205c3d3d870540f0ffea07977b68a9b018c91c43fae0bdb780954/caio-0.12.10-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:bd3cb22b0c5ca195b35c2b7d57892c23cc13d969f24c44fea876af2cfee02e7a", size = 161998, upload-time = "2026-10-22T21:34:31.934Z" },
+Line 130:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/78/1a/1ffea8df50383d5bc468e94d2b45d1c458f965b80bb12ad28891d0a55266/caio-0.12.10-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:79a4e0000dd92b1e4e7842fca99fdaa5fd0259dd33a9892741e7126e74656c49", size = 42801, upload-time = "2026-10-22T21:34:46.485Z" },
+Line 169:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/44/de/f98430906df1545ffde0d543dd124a7a439bc2cd32b36b9c53f805df7333/cffi-2.1.1-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:68e62fe11f30d5ca8289242866f0a5291402d8529ca2178ab8afc5c9694ae890", size = 222389, upload-time = "2026-08-03T21:19:48.331Z" },
+Line 205:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/23/59/40338bf421c5accea1d45158170c87006ef1cd371b05c077e76476949728/cffi-2.1.1-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:7750c6449dff7864bb9bb27ddfb0267756189201a3afc911d82b3caacd70dfc3", size = 188504, upload-time = "2026-08-03T21:20:29.495Z" },
+Line 223:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/44/16/29e6d01b388bef055ecd6ca8244b3f4d336bd09e92d5d892187b9601084e/cffi-2.1.1-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:aeae0e330c9f6acd681f647d46cefd30c29f93e3392882e792e82080c9691399", size = 221630, upload-time = "2026-08-03T21:20:57.336Z" },
+Line 266:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/78/6e/60ce52a85a7fd631ae8482ae6d74521014ca2f255892679484dc04d7ef56/charset_normalizer-3.5.2-cp313-cp313-ios_13_0_arm64_iphoneos.whl", hash = "sha256:d2374b62878abb00cd8309b32af6c0b715cd02dec0ca74ef12e5069bdc64144a", size = 206701, upload-time = "2026-09-30T04:35:58.639Z" },
+Line 354:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/8c/ab/176fbfd5b64939c55d652366aa5b9ef1d767af207a3aa6ebeb0d226c484d/charset_normalizer-3.5.2-cp37-abi3-macosx_10_9_universal2.whl", hash = "sha256:4275811936e2f06feff5e598fb42a1b7ae852da8e39605211892b56b81a34efd", size = 331815, upload-time = "2026-09-30T04:38:26.216Z" },
+Line 404:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/ce/cb/52eb3770c0d0be2702a98c6e96065ddc0a2877cf0845aa9c23397c142cd4/cryptography-50.0.2-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:f785f6161f202ab04d8ca194158968798e480ca058943907972da5f12e2881e8", size = 3892731, upload-time = "2026-09-30T14:44:13.485Z" },
+Line 417:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/2d/49/93f6a6e7a87c9aa68d44d3e1cdb5fe8f60c90d5d2f46acae9a56892816b8/cryptography-50.0.2-cp315-abi3.abi3t-macosx_11_0_arm64.whl", hash = "sha256:edc3342adf8f697fc5f59c887a304356f147b397809440ed64e2fa6af2f50f37", size = 4133708, upload-time = "2026-09-30T14:44:41.807Z" },
+Line 419:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/aa/a4/2c8d734e43d97f0842ee9f1b7b4bfb3d0cf5e19edebf43c2afe6675c2320/cryptography-50.0.2-cp315-abi3.abi3t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:f2f9bd7f90c64fe89253f0a2c05e3c4856072660429ce8831b4235bf29403a67", size = 4966465, upload-time = "2026-09-30T14:44:45.769Z" },
+Line 649:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/16/e1/e334cf7442c01892ed813563b21b2a8ab5b042e34f33ad76cf64526d1de8/grpcio-1.85.1-cp315-cp315-musllinux_1_2_x86_64.whl", hash = "sha256:7bc5de50374416223bc35332aa8185567ec065f86190ff0ca6e13176ed39a3b4", size = 8346563, upload-time = "2026-10-30T16:01:10.394Z" },
+Line 702:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/46/c0/19172874cde0344a20c85877a0b2d0dcfca31111729ad8a79e8b4ac4e207/httptools-0.9.0-cp312-cp312-musllinux_1_2_ppc64le.whl", hash = "sha256:29b0d823e3c1e7cd1093a5dc889245db693ef13ada624cd66e2262421ef38867", size = 552414, upload-time = "2026-10-09T19:54:44.19Z" },
+Line 916:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/c3/27/84be9cc1c2b781d2da7c694fd7608311af3aaab91f20eb00d4999285b351/jiter-0.18.0-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a01642d403b8925f2b1e1bb51b4ba49ece8a2bdc9b9560fc8ed0b1f2b35b567a", size = 338324, upload-time = "2026-10-23T13:49:58.842Z" },
+Line 917:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/9a/ac/7b3bfb49b19e42ebc2ae56ec307c372602dd1e17892f7e051c9bf97cd7e6/jiter-0.18.0-cp314-cp314-manylinux_2_31_riscv64.whl", hash = "sha256:89ba6b674d4bd7290f9943bbeba0e1bf35955bbb1e07e41ba94691648cf133d5", size = 316484, upload-time = "2026-10-23T13:50:00.257Z" },
+Line 931:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/8a/04/45ba31ce79022706323fd2291f87d956fd51fdfcba2ba8924b3de62f0ce2/jiter-0.18.0-cp314-cp314t-manylinux_2_31_riscv64.whl", hash = "sha256:92a16933d0fa852133500837d33cd6a4f75e4414d77389c58269e12bafc2ee02", size = 316169, upload-time = "2026-10-23T13:50:18.915Z" },
+Line 955:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/5e/99/4c53c9d46462cd0691c3c188f89612e63a424d19f5befd1b0631f8f90638/jiter-0.18.0-cp315-cp315t-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:2ea4f2ed18eba7454182d4ff727444788ae51ad11bf5a25ad892f5f0ad3e754b", size = 335162, upload-time = "2026-10-23T13:50:49.987Z" },
+Line 957:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/19/7e/48e78558d7cb3d289211da0397b7ed31cfe3efc98dd85f2324abd574c07c/jiter-0.18.0-cp315-cp315t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b3c3318cc6ef857b6554b43479c30e8249fc143189d500d4137cde9c58412e6d", size = 337848, upload-time = "2026-10-23T13:50:52.961Z" },
+Line 961:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/c8/b9/bad5391d7fb734cd6ebc383c8603bc324518bf4ce865f5d813908ae42596/jiter-0.18.0-cp315-cp315t-musllinux_1_1_x86_64.whl", hash = "sha256:8060a206e290410d3bfc3bd91715f3ec90a499246f8335d48927e0b3b6a6ccc5", size = 515619, upload-time = "2026-10-23T13:50:58.231Z" },
+Line 964:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/64/42/cdfa494914b6d512431e795d8d6226b84b77b733bb8b5eccafd5a1a86dad/jiter-0.18.0-cp315-cp315t-win_arm64.whl", hash = "sha256:bec676a0dc24d4dabd4bdfb3d1f1bf80d4d3dd892fc5c5b3f8f953e2459dbfce", size = 183182, upload-time = "2026-10-23T13:51:01.797Z" },
+Line 980:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/df/9f/934db284aa22f37af59708e382903860d4b81329c137b1b0ed2745daeb65/joserfc-1.7.7-py3-none-any.whl", hash = "sha256:06979cfbab78bc802f14c0358f32969826cc26720e13cb38926ffdc86bc0cb2c", size = 71758, upload-time = "2026-10-19T00:30:28.498Z" },
+Line 1228: sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/ab/d9/e50d6e6b8d241b90564892afed8fac98d17da023c82810577cdb4530f87c/langgraph_prebuilt-1.1.1.tar.gz", hash = "sha256:f1b1a4772e7f9f15ba736411aad3877183ad40cd9349748df76bd2b9f58a83c7", size = 179437, upload-time = "2026-10-15T04:32:25.224Z" }
+Line 1310:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/cb/f6/580440e2f52cf00bba5c5e1080bfa88cdfcde73be71a11d95170ddbb663f/lxml-6.1.3-cp313-cp313-musllinux_1_2_ppc64le.whl", hash = "sha256:0dee106e9aa97fb00541b1ed7827070564d0549c3d3fba8920e6b20fd980f748", size = 5645928, upload-time = "2026-09-02T14:48:46.187Z" },
+Line 1312:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/c3/3c/fe55b2bd5c6113c906511cd88f6a470195c5fbff1124f19970ab706c3477/lxml-6.1.3-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:d9b3e7d71bf6acff341233417abbdface29c647e3113892d9aaedc02eb4aa2bc", size = 5255814, upload-time = "2026-09-02T14:48:50.948Z" },
+Line 1381:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/f8/b7/44edd7de434181c582892e68d1ffe6775ca403ce14aea07cb5a218a936cf/lxml-6.1.3-cp315-cp315t-win_arm64.whl", hash = "sha256:5a721a98c649855963811b59b55755b30566e7f7fc40bdc9803d66dee9f811cf", size = 3822836, upload-time = "2026-09-02T14:51:42.471Z" },
+Line 1479:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/99/ba/005cb5edd580d2f84d7ca3206b92dc17d4388e56e6f87ffe8f2762f83139/numpy-2.5.4-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:c668b2f0d651605b58892644b0e302c7157f7159544227758c896982ef384b18", size = 17005499, upload-time = "2026-10-10T20:03:37.961Z" },
+Line 1581:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/a9/56/f8ad2546150168858c16915c452b00eecb79597597524d1ad6ae14ad4eab/orjson-3.13.0-cp313-cp313-macosx_10_15_x86_64.macosx_11_0_arm64.macosx_10_15_universal2.whl", hash = "sha256:64e8f345048d988c8b68d3882e5d41028fca1219a9939b32e4a77be34c8ae8e3", size = 222892, upload-time = "2026-10-07T14:08:37.495Z" },
+Line 1590:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/7b/7a/d6927845712ec2b1e89263cd12d7203531db185dbad67f914226f2fca156/orjson-3.13.0-cp313-cp313-win_arm64.whl", hash = "sha256:89efecad02515df7f318d0613b5dfd6d2a1acd323a2b8294712789a715945525", size = 126134, upload-time = "2026-10-07T14:08:51.118Z" },
+Line 1608:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/0a/2e/1c13552d8b0241083116de02b2f284ee38501ef06ebfb79893f741538168/orjson-3.13.0-cp315-cp315-musllinux_1_2_x86_64.whl", hash = "sha256:c5e3ccaac3106e8fa6e2f2f6962449d7c757d7b067e41b395a19d6f0d6cec892", size = 126711, upload-time = "2026-10-07T14:09:20.645Z" },
+Line 1640:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/9a/5c/9b482f690abe4f1990007bcc2acdae6c0c73a3363280d8c02aeacac275e5/ormsgpack-1.13.0-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:f9cac2b774e189252754e2e52ea84f2180d9ebf84994ac2a3ce57dc902fe4679", size = 469719, upload-time = "2026-10-15T19:51:00.568Z" },
+Line 1648:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/7c/9c/78d1a9c3d8ef1e873af3a1dd74240815cbea6252277c3a5e7f2f5fbff5de/ormsgpack-1.13.0-cp315-cp315-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:720cfe54a4350c892d2a21971022e39263b2044ecd1575c69d4e2f9fec339297", size = 246906, upload-time = "2026-10-15T19:51:14.06Z" },
+Line 1690:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/01/54/eb85f8b2ce121c21286842cf81abaa670ec3570173c512298f91128927a5/pandas-3.1.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:849d5019dead65944875ce21fbf71a2ca18e982164cd7367623cbda8567c3122", size = 11609893, upload-time = "2026-10-22T11:55:28.592Z" },
+Line 1797:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/14/de/3829030f209722ade3753bb456b805a0e7f885cf885b483407365c82e9ca/pillow-13.0.0-cp315-cp315-musllinux_1_2_x86_64.whl", hash = "sha256:e892354a424b1e82a78ba16785822bdd40de06f19446a3d4a28047df1a4f8932", size = 7236439, upload-time = "2026-10-16T22:17:24.352Z" },
+Line 1803:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/b3/64/0861ea4e03c50b14af9ed9dd8b9f388ab42f445c623a9fcbab19aef7aa55/pillow-13.0.0-cp315-cp315t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:20822140c9a2ba9c5e42df342b0a892ab2e102fc0e3db967a133bb9ce3f898bb", size = 6612582, upload-time = "2026-10-16T22:17:35.415Z" },
+Line 1821: sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/9a/6e/886dc7c9d21e2d95aceb696f1e31271742033aeef3661f6e9c8921493592/platformdirs-4.14.3.tar.gz", hash = "sha256:021add1ab113483edbcd4694f5fbb2d688b893ea30d35e1155bb371cf4be0be8", size = 71124, upload-time = "2026-11-01T16:27:32.928Z" }
+Line 1883:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/61/83/72c67013656f4d6b547caabffb193e91d57e63f90eefdcc6d045c400e97d/psycopg_binary-3.3.6-cp313-cp313-musllinux_1_2_riscv64.whl", hash = "sha256:9892188bb15e5803beb51afe8a25add6b56be391a53058e8bca03b74e1e6bf22", size = 4009229, upload-time = "2026-09-18T13:20:11.905Z" },
+Line 1885:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/55/7f/e350e1cf498ba2565c3f87b12f429d2012eb86b76c2b3845a19ee5fbb4d6/psycopg_binary-3.3.6-cp313-cp313-win_amd64.whl", hash = "sha256:0ebfad5d131de9f892ae9e70cc7616207768b6714b66a52d4612b8ceaf78b372", size = 3658179, upload-time = "2026-09-18T13:20:22.691Z" },
+Line 1890:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/d4/c1/b8a1f18fb1b7558a17f57f7cb3fc8bc93189feea2958925950b3acb15743/psycopg_binary-3.3.6-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:4690cf67738f0e0e49a32aeec99bf0e4595cc2b4f1af984a4345394b1dcff91a", size = 6847192, upload-time = "2026-09-18T13:20:56.874Z" },
+Line 2011:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/3d/96/e96ff19527c73b9aaddce2a4424006dc15439fd89ef2d39641048c5ee85a/pydantic_core-2.50.2-cp313-cp313-musllinux_1_1_x86_64.whl", hash = "sha256:8772c2c0091e6fc2d0499151793d31bf811826986b0727052935a95104845544", size = 2478926, upload-time = "2026-10-29T16:32:52.856Z" },
+Line 2210:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/fc/2b/1f3cded5822fd49c02f40544cbb5f58c7cfd6b1694869fd476cb6170ee97/pywin32-312-cp314-cp314-win32.whl", hash = "sha256:a77a90fbb6881238d2ca9c6fd797b25817f3768fe78d214a90137ff055a75f5b", size = 6468928, upload-time = "2026-06-04T07:49:43.188Z" },
+Line 2224:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/de/3d/8161f7711c017e01ac9f008dfddd9410dff3674334c233bde66e7ba65bbf/pywin32_ctypes-0.2.3-py3-none-any.whl", hash = "sha256:8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8", size = 30756, upload-time = "2024-08-14T10:15:33.187Z" },
+Line 2372:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/92/d3/d5c5b264784a5ab2b0f8cf620c1eeb4dbf3440d306761905e7d99345bef5/regex-2026.9.29-cp315-cp315-win_arm64.whl", hash = "sha256:8f39588af4731c8923c26810eb3b33f76f17633985e40f59c3cd45a33805a895", size = 283664, upload-time = "2026-09-29T00:49:15.331Z" },
+Line 2373:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/02/dc/f63ec2c201445ce1150fe780f5c56f16a10124d9a9da3a93161dbb0d8892/regex-2026.9.29-cp315-cp315t-macosx_10_15_universal2.whl", hash = "sha256:fb99cc9d45f48895d9d67f6a0b8a57f08d39c174d9f25ad97a313e0470267b1c", size = 501549, upload-time = "2026-09-29T00:49:17.705Z" },
+Line 2387:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/72/f2/6314b5fc68789b5dcc38885bc6e3d6986b34fb3372b7231088ee5cecaa05/regex-2026.9.29-cp315-cp315t-win_amd64.whl", hash = "sha256:e2c89e9b762c57f59d5e99ee8b20202adb892e35f8d3485741340999ca55058e", size = 286487, upload-time = "2026-09-29T00:49:53.224Z" },
+Line 2414: sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/ac/c3/e2a2b89f2d3e2179abd6d00ebd70bff6273f37fb3e0cc209f48b39d00cbf/requests-2.34.2.tar.gz", hash = "sha256:f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed", size = 142856, upload-time = "2026-05-14T19:25:27.735Z" }
+Line 2467:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/c2/6d/b979775a3057b2a5c26d75ecbff60a20a24ef081db6dd76836fca3f20247/rpds_py-2026.9.1-cp312-cp312-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:3890a6aa36e6baa53d5258a2a25d3ef8b37ad165a6ab27a892d7c3e3a432cd69", size = 487289, upload-time = "2026-10-04T16:29:21.958Z" },
+Line 2527:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/da/04/7e05dc3aebaf52f4e026766bd668fdd09a9d0e23f64a14686b36b3501892/rpds_py-2026.9.1-cp315-cp315-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:a575404ebc9cf2e91edd32eaf570ec1430eb900d4f56724ba7dd4bc1fc9c176d", size = 393146, upload-time = "2026-10-04T16:30:56.625Z" },
+Line 2542:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/3b/9c/15a2469e9389242f46896b3f0a01d68caea8a5a35c011fcb05ef333aae73/rpds_py-2026.9.1-cp315-cp315t-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:ea394a937f17a54c51239348bdbe2e3518124c8d4a8951ba04a311d3095bd18f", size = 394371, upload-time = "2026-10-04T16:31:24.768Z" },
+Line 2557:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/bf/70/f73564642bbe3322c7eeef2c2f258cf040b71c41a430b532e59d04a1b838/rpds_py-2026.9.1-pp312-pypy312_pp73-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:88b5268892fde430d5531f95bc560b6efbbd67c929662c586afd729a96e7461c", size = 412131, upload-time = "2026-10-04T16:32:22.285Z" },
+Line 2768:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/4a/a3/d8d0b7bf4892c41dbbb0e81a356d20aad781cc28d3029669e167eb72d9a1/uuid_utils-0.19.0-cp314-cp314t-macosx_10_12_x86_64.whl", hash = "sha256:ac37f30acc7fe01266c73f19a686d0ea1fbd22495d81205cc3b572e2fb2293a6", size = 292083, upload-time = "2026-10-26T10:54:32.053Z" },
+Line 2856:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/3b/2c/8fc15a03489299aab8a6212dfe0f137dc39836f915c87f7fd9d9ddd814de/uvloop-0.23.0-cp315-cp315t-macosx_10_15_universal2.whl", hash = "sha256:098a85e1393ef5202767b7e5fb41a32cd8bd81e6ee4af364c179801c4aa3f6d4", size = 1493428, upload-time = "2026-10-01T03:16:33.859Z" },
+Line 2877:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/31/c3/1a501b597817096c9831c255f6270c124ce0e2faeb74124be24dcc93b86d/watchfiles-1.3.0-cp310-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:7398930a2b76b9dc67a4e6b8bfc7baf30946892a86f417a3920c07bdd6febc30", size = 493761, upload-time = "2026-09-21T09:08:19.327Z" },
+Line 2907: sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/30/4b/4692be6d5bf739ed049b3813901c42091f8c054df89d5c089343823dea0d/websockets-17.3.tar.gz", hash = "sha256:1c7dd93a1c9f89297471493674b1fc1d9467cafd45374f2172213046bdb3a329", size = 188878, upload-time = "2026-10-19T16:58:05.813Z" }
+Line 3004:     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/c4/c5/b3a07ce1c54fc0f5441642f5352662b90d7e658c966730eaf6d78a5f20bc/websockets-17.3-cp315-cp315-musllinux_1_2_s390x.whl", hash = "sha256:bd645b5d2f810a181c44f4a71135e7c365b44f4be9ed3d1892635be13a857553", size = 225744, upload-time = "2026-10-19T16:57:11.615Z" },
+Line 307
+
+[...]
+
+rclePlusFilled:()=>P2,Clock:()=>T2,Close:()=>I2,CloseBold:()=>O2,Cloudy:()=>G2,Coffee:()=>W2,CoffeeCup:()=>U2,Coin:()=>K2,ColdDrink:()=>Q2,Collection:()=>J2,CollectionTag:()=>Z2,Comment:()=>X2,Compass:()=>$2,Connection:()=>oe,Coordinate:()=>ae,CopyDocument:()=>ne,Cpu:()=>me,CreditCard:()=>pe,Crop:()=>_e,DArrowLeft:()=>fe,DArrowRight:()=>ie,DCaret:()=>de,DataAnalysis:()=>ue,DataBoard:()=>he,DataLine:()=>ve,Delete:()=>xe,DeleteFilled:()=>we,DeleteLocation:()=>Be,Dessert:()=>ke,Discount:()=>Ee,Dish:()=>ge,DishDot:()=>Ve,Document:()=>Ae,DocumentAdd:()=>Me,DocumentChecked:()=>Ne,DocumentCopy:()=>ze,DocumentDelete:()=>He,DocumentRemove:()=>Le,Download:()=>Se,Drizzling:()=>qe,Edit:()=>be,EditPen:()=>Fe,Eleme:()=>Pe,ElemeFilled:()=>ye,ElementPlus:()=>Re,Expand:()=>Te,Failed:()=>Oe,Female:()=>Ie,Files:()=>Ge,Film:()=>We,Filter:()=>Ke,Finished:()=>Qe,FirstAidKit:()=>je,Flag:()=>Je,Fold:()=>Xe,Folder:()=>a0,FolderAdd:()=>Ye,FolderChecked:()=>$e,FolderDelete:()=>e0,FolderOpened:()=>o0,FolderRemove:()=>t0,Food:()=>r (line truncated)
+
+frontend\node_modules\@element-plus\icons-vue\dist\global.min.cjs
+Line 3: "use strict";var H4=Object.defineProperty;var gc=Object.getOwnPropertyDescriptor;var Mc=Object.getOwnPropertyNames;var Nc=Object.prototype.hasOwnProperty;var e8=(o,e)=>{for(var t in e)H4(o,t,{get:e[t],enumerable:!0})},zc=(o,e,t,N4)=>{if(e&&typeof e=="object"||typeof e=="function")for(let M4 of Mc(e))!Nc.call(o,M4)&&M4!==t&&H4(o,M4,{get:()=>e[M4],enumerable:!(N4=gc(e,M4))||N4.enumerable});return o};var Hc=o=>zc(H4({},"__esModule",{value:!0}),o);var e7={};e8(e7,{AddLocation:()=>L4,Aim:()=>A4,AlarmClock:()=>S4,Apple:()=>q4,ArrowDown:()=>D4,ArrowDownBold:()=>F4,ArrowLeft:()=>y4,ArrowLeftBold:()=>b4,ArrowRight:()=>R4,ArrowRightBold:()=>P4,ArrowUp:()=>O4,ArrowUpBold:()=>T4,Avatar:()=>I4,Back:()=>G4,Baseball:()=>U4,Basketball:()=>W4,Bell:()=>Q4,BellFilled:()=>K4,Bicycle:()=>Z4,Bottom:()=>X4,BottomLeft:()=>j4,BottomRight:()=>J4,Bowl:()=>Y4,Box:()=>$4,Briefcase:()=>eo,Brush:()=>to,BrushFilled:()=>oo,Burger:()=>ao,Calendar:()=>ro,Camera:()=>lo,CameraFilled:()=>no,CaretBottom:()=>mo,CaretLeft:()=>co,CaretRight:()=>po,CaretTop:()=>so,Cellphone:()=>_o,ChatDotRound:()=>fo,ChatDotSquare:()=>io,ChatLineRound:()=>uo,ChatLineSquare:()=>ho,ChatRound:()=>vo,ChatSquare:()=>wo,Check:()=>Bo,Checked:()=>xo,Cherry:()=>ko,Chicken:()=>Co,ChromeFilled:()=>Eo,CircleCheck:()=>go,CircleCheckFilled:()=>Vo,CircleClose:()=>No,CircleCloseFilled:()=>Mo,CirclePlus:()=>Ho,CirclePlusFilled:()=>zo,Clock:()=>Lo,Close:()=>So,CloseBold:()=>Ao,Cloudy:()=>qo,Coffee:()=>Do,CoffeeCup:()=>Fo,Coin:()=>bo,ColdDrink:()=>yo,Collection:()=>Ro,CollectionTag:()=>Po,Comment:()=>To,Compass:()=>Oo,Connection:()=>Io,Coordinate:()=>Go,CopyDocument:()=>Uo,Cpu:()=>Wo,CreditCard:()=>Ko,Crop:()=>Qo,DArrowLeft:()=>Zo,DArrowRight:()=>jo,DCaret:()=>Jo,DataAnalysis:()=>Xo,DataBoard:()=>Yo,DataLine:()=>$o,Delete:()=>tt,DeleteFilled:()=>et,DeleteLocation:()=>ot,Dessert:()=>at,Discount:()=>rt,Dish:()=>lt,DishDot:()=>nt,Document:()=>ft,DocumentAdd:()=>mt,DocumentChecked:()=>ct,DocumentCopy:()=>pt,DocumentDelete:()=>st,DocumentRemove:()= (line truncated)
+
+frontend\node_modules\@element-plus\icons-vue\dist\global.js
+Line 2222:         d: "m739.328 291.328-35.2-6.592-12.8-33.408a192.064 192.064 0 0 0-365.952 23.232l-9.92 40.896-41.472 7.04a176.32 176.32 0 0 0-146.24 173.568c0 97.28 78.72 175.936 175.808 175.936h400a192 192 0 0 0 35.776-380.672M959.552 480a256 256 0 0 1-256 256h-400A239.81 239.81 0 0 1 63.744 496.192a240.32 240.32 0 0 1 199.488-236.8 256.128 256.128 0 0 1 487.872-30.976A256.064 256.064 0 0 1 959.552 480M288 800h64v64h-64zm192 0h64v64h-64zm-96 96h64v64h-64zm192 0h64v64h-64zm96-96h64v64h-64z"
+Line 3172:         d: "M128.64 448a208 208 0 0 1 193.536-191.552 224 224 0 0 1 445.248 15.488A208.13 208.13 0 0 1 894.784 448H896L548.8 983.68a32 32 0 0 1-53.248.704L128 448zm64.256 0h286.208a144 144 0 0 0-286.208 0m351.36 0h286.272a144 144 0 0 0-286.272 0m-294.848 64 271.808 396.608L778.24 512zM511.68 352.64a207.87 207.87 0 0 1 189.184-96.192 160 160 0 0 0-314.752 5.632c52.608 12.992 97.28 46.08 125.568 90.56"
+Line 3305:         d: "M288 671.36v64.128A239.81 239.81 0 0 1 63.744 496.192a240.32 240.32 0 0 1 199.488-236.8 256.128 256.128 0 0 1 487.872-30.976A256.064 256.064 0 0 1 736 734.016v-64.768a192 192 0 0 0 3.328-377.92l-35.2-6.592-12.8-33.408a192.064 192.064 0 0 0-365.952 23.232l-9.92 40.896-41.472 7.04a176.32 176.32 0 0 0-146.24 173.568c0 91.968 70.464 167.36 160.256 175.232z"
+Line 4536:         d: "m739.328 291.328-35.2-6.592-12.8-33.408a192.064 192.064 0 0 0-365.952 23.232l-9.92 40.896-41.472 7.04a176.32 176.32 0 0 0-146.24 173.568c0 97.28 78.72 175.936 175.808 175.936h400a192 192 0 0 0 35.776-380.672M959.552 480a256 256 0 0 1-256 256h-400A239.81 239.81 0 0 1 63.744 496.192a240.32 240.32 0 0 1 199.488-236.8 256.128 256.128 0 0 1 487.872-30.976A256.064 256.064 0 0 1 959.552 480M224 800a32 32 0 0 1 32 32v96a32 32 0 1 1-64 0v-96a32 32 0 0 1 32-32m192 0a32 32 0 0 1 32 32v96a32 32 0 1 1-64 0v-96a32 32 0 0 1 32-32m192 0a32 32 0 0 1 32 32v96a32 32 0 1 1-64 0v-96a32 32 0 0 1 32-32m192 0a32 32 0 0 1 32 32v96a32 32 0 1 1-64 0v-96a32 32 0 0 1 32-32"
+Line 4694:         d: "m186.496 544 41.408 41.344a32 32 0 1 1-45.248 45.312l-96-96a32 32 0 0 1 0-45.312l96-96a32 32 0 1 1 45.248 45.312L186.496 480h290.816V186.432l-41.472 41.472a32 32 0 1 1-45.248-45.184l96-96.128a32 32 0 0 1 45.312 0l96 96.064a32 32 0 0 1-45.248 45.184l-41.344-41.28V480H832l-41.344-41.344a32 32 0 0 1 45.248-45.312l96 96a32 32 0 0 1 0 45.312l-96 96a32 32 0 0 1-45.248-45.312L832 544H541.312v293.44l41.344-41.28a32 32 0 1 1 45.248 45.248l-96 96a32 32 0 0 1-45.312 0l-96-96a32 32 0 1 1 45.312-45.248l41.408 41.408V544z"
+Line 4797:         d: "M771.776 794.88A384 384 0 0 1 128 512h64a320 320 0 0 0 555.712 216.448H654.72a32 32 0 1 1 0-64h149.056a32 32 0 0 1 32 32v148.928a32 32 0 1 1-64 0v-50.56zM276.288 295.616h92.992a32 32 0 0 1 0 64H220.16a32 32 0 0 1-32-32V178.56a32 32 0 0 1 64 0v50.56A384 384 0 0 1 896.128 512h-64a320 320 0 0 0-555.776-216.384z"
+
+frontend\node_modules\@element-plus\icons-vue\dist\global.iife.min.js
+Line 3: "use strict";var ElementPlusIconsVue=(()=>{var Hc=Object.create;var L4=Object.defineProperty;var Lc=Object.getOwnPropertyDescriptor;var Ac=Object.getOwnPropertyNames;var Sc=Object.getPrototypeOf,qc=Object.prototype.hasOwnProperty;var Fc=(t,a)=>()=>(a||t((a={exports:{}}).exports,a),a.exports),t8=(t,a)=>{for(var r in a)L4(t,r,{get:a[r],enumerable:!0})},a8=(t,a,r,H4)=>{if(a&&typeof a=="object"||typeof a=="function")for(let z4 of Ac(a))!qc.call(t,z4)&&z4!==r&&L4(t,z4,{get:()=>a[z4],enumerable:!(H4=Lc(a,z4))||H4.enumerable});return t};var o=(t,a,r)=>(r=t!=null?Hc(Sc(t)):{},a8(a||!t||!t.__esModule?L4(r,"default",{value:t,enumerable:!0}):r,t)),Dc=t=>a8(L4({},"__esModule",{value:!0}),t);var e=Fc((c7,r8)=>{r8.exports=Vue});var l7={};t8(l7,{AddLocation:()=>S4,Aim:()=>q4,AlarmClock:()=>F4,Apple:()=>D4,ArrowDown:()=>y4,ArrowDownBold:()=>b4,ArrowLeft:()=>R4,ArrowLeftBold:()=>P4,ArrowRight:()=>O4,ArrowRightBold:()=>T4,ArrowUp:()=>G4,ArrowUpBold:()=>I4,Avatar:()=>U4,Back:()=>W4,Baseball:()=>K4,Basketball:()=>Q4,Bell:()=>j4,BellFilled:()=>Z4,Bicycle:()=>J4,Bottom:()=>$4,BottomLeft:()=>X4,BottomRight:()=>Y4,Bowl:()=>eo,Box:()=>oo,Briefcase:()=>to,Brush:()=>ro,BrushFilled:()=>ao,Burger:()=>no,Calendar:()=>lo,Camera:()=>co,CameraFilled:()=>mo,CaretBottom:()=>po,CaretLeft:()=>so,CaretRight:()=>_o,CaretTop:()=>fo,Cellphone:()=>io,ChatDotRound:()=>uo,ChatDotSquare:()=>ho,ChatLineRound:()=>vo,ChatLineSquare:()=>wo,ChatRound:()=>Bo,ChatSquare:()=>xo,Check:()=>ko,Checked:()=>Co,Cherry:()=>Eo,Chicken:()=>Vo,ChromeFilled:()=>go,CircleCheck:()=>No,CircleCheckFilled:()=>Mo,CircleClose:()=>Ho,CircleCloseFilled:()=>zo,CirclePlus:()=>Ao,CirclePlusFilled:()=>Lo,Clock:()=>So,Close:()=>Fo,CloseBold:()=>qo,Cloudy:()=>Do,Coffee:()=>yo,CoffeeCup:()=>bo,Coin:()=>Po,ColdDrink:()=>Ro,Collection:()=>Oo,CollectionTag:()=>To,Comment:()=>Io,Compass:()=>Go,Connection:()=>Uo,Coordinate:()=>Wo,CopyDocument:()=>Ko,Cpu:()=>Qo,CreditCard:()=>Zo,Crop:()=>jo,DArrowLeft:()=>Jo,DArrowRight:()=>Xo,DCaret:()=>Yo,DataAnaly (line truncated)
+
+frontend\node_modules\@element-plus\icons-vue\dist\global.iife.js
+Line 2367:           d: "m739.328 291.328-35.2-6.592-12.8-33.408a192.064 192.064 0 0 0-365.952 23.232l-9.92 40.896-41.472 7.04a176.32 176.32 0 0 0-146.24 173.568c0 97.28 78.72 175.936 175.808 175.936h400a192 192 0 0 0 35.776-380.672M959.552 480a256 256 0 0 1-256 256h-400A239.81 239.81 0 0 1 63.744 496.192a240.32 240.32 0 0 1 199.488-236.8 256.128 256.128 0 0 1 487.872-30.976A256.064 256.064 0 0 1 959.552 480M288 800h64v64h-64zm192 0h64v64h-64zm-96 96h64v64h-64zm192 0h64v64h-64zm96-96h64v64h-64z"
+Line 3221:           d: "M128.64 448a208 208 0 0 1 193.536-191.552 224 224 0 0 1 445.248 15.488A208.13 208.13 0 0 1 894.784 448H896L548.8 983.68a32 32 0 0 1-53.248.704L128 448zm64.256 0h286.208a144 144 0 0 0-286.208 0m351.36 0h286.272a144 144 0 0 0-286.272 0m-294.848 64 271.808 396.608L778.24 512zM511.68 352.64a207.87 207.87 0 0 1 189.184-96.192 160 160 0 0 0-314.752 5.632c52.608 12.992 97.28 46.08 125.568 90.56"
+Line 3340:           d: "M288 671.36v64.128A239.81 239.81 0 0 1 63.744 496.192a240.32 240.32 0 0 1 199.488-236.8 256.128 256.128 0 0 1 487.872-30.976A256.064 256.064 0 0 1 736 734.016v-64.768a192 192 0 0 0 3.328-377.92l-35.2-6.592-12.8-33.408a192.064 192.064 0 0 0-365.952 23.232l-9.92 40.896-41.472 7.04a176.32 176.32 0 0 0-146.24 173.568c0 91.968 70.464 167.36 160.256 175.232z"
+Line 4455:           d: "m739.328 291.328-35.2-6.592-12.8-33.408a192.064 192.064 0 0 0-365.952 23.232l-9.92 40.896-41.472 7.04a176.32 176.32 0 0 0-146.24 173.568c0 97.28 78.72 175.936 175.808 175.936h400a192 192 0 0 0 35.776-380.672M959.552 480a256 256 0 0 1-256 256h-400A239.81 239.81 0 0 1 63.744 496.192a240.32 240.32 0 0 1 199.488-236.8 256.128 256.128 0 0 1 487.872-30.976A256.064 256.064 0 0 1 959.552 480M224 800a32 32 0 0 1 32 32v96a32 32 0 1 1-64 0v-96a32 32 0 0 1 32-32m192 0a32 32 0 0 1 32 32v96a32 32 0 1 1-64 0v-96a32 32 0 0 1 32-32m192 0a32 32 0 0 1 32 32v96a32 32 0 1 1-64 0v-96a32 32 0 0 1 32-32m192 0a32 32 0 0 1 32 32v96a32 32 0 1 1-64 0v-96a32 32 0 0 1 32-32"
+Line 4599:           d: "m186.496 544 41.408 41.344a32 32 0 1 1-45.248 45.312l-96-96a32 32 0 0 1 0-45.312l96-96a32 32 0 1 1 45.248 45.312L186.496 480h290.816V186.432l-41.472 41.472a32 32 0 1 1-45.248-45.184l96-96.128a32 32 0 0 1 45.312 0l96 96.064a32 32 0 0 1-45.248 45.184l-41.344-41.28V480H832l-41.344-41.344a32 32 0 0 1 45.248-45.312l96 96a32 32 0 0 1 0 45.312l-96 96a32 32 0 0 1-45.248-45.312L832 544H541.312v293.44l41.344-41.28a32 32 0 1 1 45.248 45.248l-96 96a32 32 0 0 1-45.312 0l-96-96a32 32 0 1 1 45.312-45.248l41.408 41.408V544z"
+Line 4692:           d: "M771.776 794.88A384 384 0 0 1 128 512h64a320 320 0 0 0 555.712 216.448H654.72a32 32 0 1 1 0-64h149.056a32 32 0 0 1 32 32v148.928a32 32 0 1 1-64 0v-50.56zM276.288 295.616h92.992a32 32 0 0 1 0 64H220.16a32 32 0 0 1-32-32V178.56a32 32 0 0 1 64 0v50.56A384 384 0 0 1 896.128 512h-64a320 320 0 0 0-555.776-216.384z"
+
+frontend\node_modules\@element-plus\icons-vue\dist\global.cjs
+Line 2349:         d: "m739.328 291.328-35.2-6.592-12.8-33.408a192.064 192.064 0 0 0-365.952 23.232l-9.92 40.896-41.472 7.04a176.32 176.32 0 0 0-146.24 173.568c0 97.28 78.72 175.936 175.808 175.936h400a192 192 0 0 0 35.776-380.672M959.552 480a256 256 0 0 1-256 256h-400A239.81 239.81 0 0 1 63.744 496.192a240.32 240.32 0 0 1 199.488-236.8 256.128 256.128 0 0 1 487.872-30.976A256.064 256.064 0 0 1 959.552 480M288 800h64v64h-64zm192 0h64v64h-64zm-96 96h64v64h-64zm192 0h64v64h-64zm96-96h64v64h-64z"
+Line 3203:         d: "M128.64 448a208 208 0 0 1 193.536-191.552 224 224 0 0 1 445.248 15.488A208.13 208.13 0 0 1 894.784 448H896L548.8 983.68a32 32 0 0 1-53.248.704L128 448zm64.256 0h286.208a144 144 0 0 0-286.208 0m351.36 0h286.272a144 144 0 0 0-286.272 0m-294.848 64 271.808 396.608L778.24 512zM511.68 352.64a207.87 207.87 0 0 1 189.184-96.192 160 160 0 0 0-314.752 5.632c52.608 12.992 97.28 46.08 125.568 90.56"
+Line 3322:         d: "M288 671.36v64.128A239.81 239.81 0 0 1 63.744 496.192a240.32 240.32 0 0 1 199.488-236.8 256.128 256.128 0 0 1 487.872-30.976A256.064 256.064 0 0 1 736 734.016v-64.768a192 192 0 0 0 3.328-377.92l-35.2-6.592-12.8-33.408a192.064 192.064 0 0 0-365.952 23.232l-9.92 40.896-41.472 7.04a176.32 176.32 0 0 0-146.24 173.568c0 91.968 70.464 167.36 160.256 175.232z"
+Line 4437:         d: "m739.328 291.328-35.2-6.592-12.8-33.408a192.064 192.064 0 0 0-365.952 23.232l-9.92 40.896-41.472 7.04a176.32 176.32 0 0 0-146.24 173.568c0 97.28 78.72 175.936 175.808 175.936h400a192 192 0 0 0 35.776-380.672M959.552 480a256 256 0 0 1-256 256h-400A239.81 239.81 0 0 1 63.744 496.192a240.32 240.32 0 0 1 199.488-236.8 256.128 256.128 0 0 1 487.872-30.976A256.064 256.064 0 0 1 959.552 480M224 800a32 32 0 0 1 32 32v96a32 32 0 1 1-64 0v-96a32 32 0 0 1 32-32m192 0a32 32 0 0 1 32 32v96a32 32 0 1 1-64 0v-96a32 32 0 0 1 32-32m192 0a32 32 0 0 1 32 32v96a32 32 0 1 1-64 0v-96a32 32 0 0 1 32-32m192 0a32 32 0 0 1 32 32v96a32 32 0 1 1-64 0v-96a32 32 0 0 1 32-32"
+Line 4581:         d: "m186.496 544 41.408 41.344a32 32 0 1 1-45.248 45.312l-96-96a32 32 0 0 1 0-45.312l96-96a32 32 0 1 1 45.248 45.312L186.496 480h290.816V186.432l-41.472 41.472a32 32 0 1 1-45.248-45.184l96-96.128a32 32 0 0 1 45.312 0l96 96.064a32 32 0 0 1-45.248 45.184l-41.344-41.28V480H832l-41.344-41.344a32 32 0 0 1 45.248-45.312l96 96a32 32 0 0 1 0 45.312l-96 96a32 32 0 0 1-45.248-45.312L832 544H541.312v293.44l41.344-41.28a32 32 0 1 1 45.248 45.248l-96 96a32 32 0 0 1-45.312 0l-96-96a32 32 0 1 1 45.312-45.248l41.408 41.408V544z"
+Line 4674:         d: "M771.776 794.88A384 384 0 0 1 128 512h64a320 320 0 0 0 555.712 216.448H654.72a32 32 0 1 1 0-64h149.056a32 32 0 0 1 32 32v148.928a32 32 0 1 1-64 0v-50.56zM276.288 295.616h92.992a32 32 0 0 1 0 64H220.16a32 32 0 0 1-32-32V178.56a32 32 0 0 1 64 0v50.56A384 384 0 0 1 896.128 512h-64a320 320 0 0 0-555.776-216.384z"
+
+frontend\node_modules\@types\node\process.d.ts
+Line 399:                  *   // Benchmark took 1154389282 nanoseconds
+
+frontend\node_modules\vite\dist\node\chunks\dep-CvfTChi5.js
+Line 347: "\u1d41<\xd5\u0131\u028a\u049d\u057b\u05d0\u0675\u06de\u07a2\u07d6\u080f\u0a4a\u0a91\u0da1\u0e6d\u0f09\u0f26\u10ca\u1228\u12e1\u1415\u149d\u14c3\u14df\u1525\0\0\0\0\0\0\u156b\u16cd\u198d\u1c12\u1ddd\u1f7e\u2060\u21b0\u228d\u23c0\u23fb\u2442\u2824\u2912\u2d08\u2e48\u2fce\u3016\u32ba\u3639\u37ac\u38fe\u3a28\u3a71\u3ae0\u3b2e\u0800EMabcfglmnoprstu\\bfms\x7f\x84\x8b\x90\x95\x98\xa6\xb3\xb9\xc8\xcflig\u803b\xc6\u40c6P\u803b&\u4026cute\u803b\xc1\u40c1reve;\u4102\u0100iyx}rc\u803b\xc2\u40c2;\u4410r;\uc000\ud835\udd04rave\u803b\xc0\u40c0pha;\u4391acr;\u4100d;\u6a53\u0100gp\x9d\xa1on;\u4104f;\uc000\ud835\udd38plyFunction;\u6061ing\u803b\xc5\u40c5\u0100cs\xbe\xc3r;\uc000\ud835\udc9cign;\u6254ilde\u803b\xc3\u40c3ml\u803b\xc4\u40c4\u0400aceforsu\xe5\xfb\xfe\u0117\u011c\u0122\u0127\u012a\u0100cr\xea\xf2kslash;\u6216\u0176\xf6\xf8;\u6ae7ed;\u6306y;\u4411\u0180crt\u0105\u010b\u0114ause;\u6235noullis;\u612ca;\u4392r;\uc000\ud835\udd05pf;\uc000\ud835\udd39eve;\u42d8c\xf2\u0113mpeq;\u624e\u0700HOacdefhilorsu\u014d\u0151\u0156\u0180\u019e\u01a2\u01b5\u01b7\u01ba\u01dc\u0215\u0273\u0278\u027ecy;\u4427PY\u803b\xa9\u40a9\u0180cpy\u015d\u0162\u017aute;\u4106\u0100;i\u0167\u0168\u62d2talDifferentialD;\u6145leys;\u612d\u0200aeio\u0189\u018e\u0194\u0198ron;\u410cdil\u803b\xc7\u40c7rc;\u4108nint;\u6230ot;\u410a\u0100dn\u01a7\u01adilla;\u40b8terDot;\u40b7\xf2\u017fi;\u43a7rcle\u0200DMPT\u01c7\u01cb\u01d1\u01d6ot;\u6299inus;\u6296lus;\u6295imes;\u6297o\u0100cs\u01e2\u01f8kwiseContourIntegral;\u6232eCurly\u0100DQ\u0203\u020foubleQuote;\u601duote;\u6019\u0200lnpu\u021e\u0228\u0247\u0255on\u0100;e\u0225\u0226\u6237;\u6a74\u0180git\u022f\u0236\u023aruent;\u6261nt;\u622fourIntegral;\u622e\u0100fr\u024c\u024e;\u6102oduct;\u6210nterClockwiseContourIntegral;\u6233oss;\u6a2fcr;\uc000\ud835\udc9ep\u0100;C\u0284\u0285\u62d3ap;\u624d\u0580DJSZacefios\u02a0\u02ac\u02b0\u02b4\u02b8\u02cb\u02d7\u02e1\u02e6\u0333\u048d\u0100;o\u0179\u02a5trahd;\u6911cy;\u4402cy;\u4405cy;\u440f\u0180grs\u02bf\u02c4\u02c7ger;\u6 (line truncated)
+
+frontend\node_modules\d3\dist\d3.min.js
+Line 2: !function(t,n){"object"==typeof exports&&"undefined"!=typeof module?n(exports):"function"==typeof define&&define.amd?define(["exports"],n):n((t="undefined"!=typeof globalThis?globalThis:t||self).d3=t.d3||{})}(this,(function(t){"use strict";function n(t,n){return null==t||null==n?NaN:t<n?-1:t>n?1:t>=n?0:NaN}function e(t,n){return null==t||null==n?NaN:n<t?-1:n>t?1:n>=t?0:NaN}function r(t){let r,o,a;function u(t,n,e=0,i=t.length){if(e<i){if(0!==r(n,n))return i;do{const r=e+i>>>1;o(t[r],n)<0?e=r+1:i=r}while(e<i)}return e}return 2!==t.length?(r=n,o=(e,r)=>n(t(e),r),a=(n,e)=>t(n)-e):(r=t===n||t===e?t:i,o=t,a=t),{left:u,center:function(t,n,e=0,r=t.length){const i=u(t,n,e,r-1);return i>e&&a(t[i-1],n)>-a(t[i],n)?i-1:i},right:function(t,n,e=0,i=t.length){if(e<i){if(0!==r(n,n))return i;do{const r=e+i>>>1;o(t[r],n)<=0?e=r+1:i=r}while(e<i)}return e}}}function i(){return 0}function o(t){return null===t?NaN:+t}const a=r(n),u=a.right,c=a.left,f=r(o).center;var s=u;const l=d(y),h=d((function(t){const n=y(t);return(t,e,r,i,o)=>{n(t,e,(r<<=2)+0,(i<<=2)+0,o<<=2),n(t,e,r+1,i+1,o),n(t,e,r+2,i+2,o),n(t,e,r+3,i+3,o)}}));function d(t){return function(n,e,r=e){if(!((e=+e)>=0))throw new RangeError("invalid rx");if(!((r=+r)>=0))throw new RangeError("invalid ry");let{data:i,width:o,height:a}=n;if(!((o=Math.floor(o))>=0))throw new RangeError("invalid width");if(!((a=Math.floor(void 0!==a?a:i.length/o))>=0))throw new RangeError("invalid height");if(!o||!a||!e&&!r)return n;const u=e&&t(e),c=r&&t(r),f=i.slice();return u&&c?(p(u,f,i,o,a),p(u,i,f,o,a),p(u,f,i,o,a),g(c,i,f,o,a),g(c,f,i,o,a),g(c,i,f,o,a)):u?(p(u,i,f,o,a),p(u,f,i,o,a),p(u,i,f,o,a)):c&&(g(c,i,f,o,a),g(c,f,i,o,a),g(c,i,f,o,a)),n}}function p(t,n,e,r,i){for(let o=0,a=r*i;o<a;)t(n,e,o,o+=r,1)}function g(t,n,e,r,i){for(let o=0,a=r*i;o<r;++o)t(n,e,o,o+a,r)}function y(t){const n=Math.floor(t);if(n===t)return function(t){const n=2*t+1;return(e,r,i,o,a)=>{if(!((o-=a)>=i))return;let u=t*r[i];const c=a*t;for(let t=i,n=i+c;t<n;t+=a)u+=r[Math.min(o,t (line truncated)
+
+frontend\node_modules\d3\dist\d3.js
+Line 17461: var magma = ramp(colors("00000401000501010601010802010902020b02020d03030f03031204041405041606051806051a07061c08071e0907200a08220b09240c09260d0a290e0b2b100b2d110c2f120d31130d34140e36150e38160f3b180f3d19103f1a10421c10441d11471e114920114b21114e22115024125325125527125829115a2a115c2c115f2d11612f116331116533106734106936106b38106c390f6e3b0f703d0f713f0f72400f74420f75440f764510774710784910784a10794c117a4e117b4f127b51127c52137c54137d56147d57157e59157e5a167e5c167f5d177f5f187f601880621980641a80651a80671b80681c816a1c816b1d816d1d816e1e81701f81721f817320817521817621817822817922827b23827c23827e24828025828125818326818426818627818827818928818b29818c29818e2a81902a81912b81932b80942c80962c80982d80992d809b2e7f9c2e7f9e2f7fa02f7fa1307ea3307ea5317ea6317da8327daa337dab337cad347cae347bb0357bb2357bb3367ab5367ab73779b83779ba3878bc3978bd3977bf3a77c03a76c23b75c43c75c53c74c73d73c83e73ca3e72cc3f71cd4071cf4070d0416fd2426fd3436ed5446dd6456cd8456cd9466bdb476adc4869de4968df4a68e04c67e24d66e34e65e44f64e55064e75263e85362e95462ea5661eb5760ec5860ed5a5fee5b5eef5d5ef05f5ef1605df2625df2645cf3655cf4675cf4695cf56b5cf66c5cf66e5cf7705cf7725cf8745cf8765cf9785df9795df97b5dfa7d5efa7f5efa815ffb835ffb8560fb8761fc8961fc8a62fc8c63fc8e64fc9065fd9266fd9467fd9668fd9869fd9a6afd9b6bfe9d6cfe9f6dfea16efea36ffea571fea772fea973feaa74feac76feae77feb078feb27afeb47bfeb67cfeb77efeb97ffebb81febd82febf84fec185fec287fec488fec68afec88cfeca8dfecc8ffecd90fecf92fed194fed395fed597fed799fed89afdda9cfddc9efddea0fde0a1fde2a3fde3a5fde5a7fde7a9fde9aafdebacfcecaefceeb0fcf0b2fcf2b4fcf4b6fcf6b8fcf7b9fcf9bbfcfbbdfcfdbf"));
+Line 17463: var inferno = ramp(colors("00000401000501010601010802010a02020c02020e03021004031204031405041706041907051b08051d09061f0a07220b07240c08260d08290e092b10092d110a30120a32140b34150b37160b39180c3c190c3e1b0c411c0c431e0c451f0c48210c4a230c4c240c4f260c51280b53290b552b0b572d0b592f0a5b310a5c320a5e340a5f3609613809623909633b09643d09653e0966400a67420a68440a68450a69470b6a490b6a4a0c6b4c0c6b4d0d6c4f0d6c510e6c520e6d540f6d550f6d57106e59106e5a116e5c126e5d126e5f136e61136e62146e64156e65156e67166e69166e6a176e6c186e6d186e6f196e71196e721a6e741a6e751b6e771c6d781c6d7a1d6d7c1d6d7d1e6d7f1e6c801f6c82206c84206b85216b87216b88226a8a226a8c23698d23698f24699025689225689326679526679727669827669a28659b29649d29649f2a63a02a63a22b62a32c61a52c60a62d60a82e5fa92e5eab2f5ead305dae305cb0315bb1325ab3325ab43359b63458b73557b93556ba3655bc3754bd3853bf3952c03a51c13a50c33b4fc43c4ec63d4dc73e4cc83f4bca404acb4149cc4248ce4347cf4446d04545d24644d34743d44842d54a41d74b3fd84c3ed94d3dda4e3cdb503bdd513ade5238df5337e05536e15635e25734e35933e45a31e55c30e65d2fe75e2ee8602de9612bea632aeb6429eb6628ec6726ed6925ee6a24ef6c23ef6e21f06f20f1711ff1731df2741cf3761bf37819f47918f57b17f57d15f67e14f68013f78212f78410f8850ff8870ef8890cf98b0bf98c0af98e09fa9008fa9207fa9407fb9606fb9706fb9906fb9b06fb9d07fc9f07fca108fca309fca50afca60cfca80dfcaa0ffcac11fcae12fcb014fcb216fcb418fbb61afbb81dfbba1ffbbc21fbbe23fac026fac228fac42afac62df9c72ff9c932f9cb35f8cd37f8cf3af7d13df7d340f6d543f6d746f5d949f5db4cf4dd4ff4df53f4e156f3e35af3e55df2e661f2e865f2ea69f1ec6df1ed71f1ef75f1f179f2f27df2f482f3f586f3f68af4f88ef5f992f6fa96f8fb9af9fc9dfafda1fcffa4"));
+Line 17465: var plasma = ramp(colors("0d088710078813078916078a19068c1b068d1d068e20068f2206902406912605912805922a05932c05942e05952f059631059733059735049837049938049a3a049a3c049b3e049c3f049c41049d43039e44039e46039f48039f4903a04b03a14c02a14e02a25002a25102a35302a35502a45601a45801a45901a55b01a55c01a65e01a66001a66100a76300a76400a76600a76700a86900a86a00a86c00a86e00a86f00a87100a87201a87401a87501a87701a87801a87a02a87b02a87d03a87e03a88004a88104a78305a78405a78606a68707a68808a68a09a58b0aa58d0ba58e0ca48f0da4910ea3920fa39410a29511a19613a19814a099159f9a169f9c179e9d189d9e199da01a9ca11b9ba21d9aa31e9aa51f99a62098a72197a82296aa2395ab2494ac2694ad2793ae2892b02991b12a90b22b8fb32c8eb42e8db52f8cb6308bb7318ab83289ba3388bb3488bc3587bd3786be3885bf3984c03a83c13b82c23c81c33d80c43e7fc5407ec6417dc7427cc8437bc9447aca457acb4679cc4778cc4977cd4a76ce4b75cf4c74d04d73d14e72d24f71d35171d45270d5536fd5546ed6556dd7566cd8576bd9586ada5a6ada5b69db5c68dc5d67dd5e66de5f65de6164df6263e06363e16462e26561e26660e3685fe4695ee56a5de56b5de66c5ce76e5be76f5ae87059e97158e97257ea7457eb7556eb7655ec7754ed7953ed7a52ee7b51ef7c51ef7e50f07f4ff0804ef1814df1834cf2844bf3854bf3874af48849f48948f58b47f58c46f68d45f68f44f79044f79143f79342f89441f89540f9973ff9983ef99a3efa9b3dfa9c3cfa9e3bfb9f3afba139fba238fca338fca537fca636fca835fca934fdab33fdac33fdae32fdaf31fdb130fdb22ffdb42ffdb52efeb72dfeb82cfeba2cfebb2bfebd2afebe2afec029fdc229fdc328fdc527fdc627fdc827fdca26fdcb26fccd25fcce25fcd025fcd225fbd324fbd524fbd724fad824fada24f9dc24f9dd25f8df25f8e125f7e225f7e425f6e626f6e826f5e926f5eb27f4ed27f3ee27f3f027f2f227f1f426f1f525f0f724f0f921"));
+
+frontend\node_modules\d3-scale-chromatic\dist\d3-scale-chromatic.mjs
+Line 434: var magma = ramp(colors("00000401000501010601010802010902020b02020d03030f03031204041405041606051806051a07061c08071e0907200a08220b09240c09260d0a290e0b2b100b2d110c2f120d31130d34140e36150e38160f3b180f3d19103f1a10421c10441d11471e114920114b21114e22115024125325125527125829115a2a115c2c115f2d11612f116331116533106734106936106b38106c390f6e3b0f703d0f713f0f72400f74420f75440f764510774710784910784a10794c117a4e117b4f127b51127c52137c54137d56147d57157e59157e5a167e5c167f5d177f5f187f601880621980641a80651a80671b80681c816a1c816b1d816d1d816e1e81701f81721f817320817521817621817822817922827b23827c23827e24828025828125818326818426818627818827818928818b29818c29818e2a81902a81912b81932b80942c80962c80982d80992d809b2e7f9c2e7f9e2f7fa02f7fa1307ea3307ea5317ea6317da8327daa337dab337cad347cae347bb0357bb2357bb3367ab5367ab73779b83779ba3878bc3978bd3977bf3a77c03a76c23b75c43c75c53c74c73d73c83e73ca3e72cc3f71cd4071cf4070d0416fd2426fd3436ed5446dd6456cd8456cd9466bdb476adc4869de4968df4a68e04c67e24d66e34e65e44f64e55064e75263e85362e95462ea5661eb5760ec5860ed5a5fee5b5eef5d5ef05f5ef1605df2625df2645cf3655cf4675cf4695cf56b5cf66c5cf66e5cf7705cf7725cf8745cf8765cf9785df9795df97b5dfa7d5efa7f5efa815ffb835ffb8560fb8761fc8961fc8a62fc8c63fc8e64fc9065fd9266fd9467fd9668fd9869fd9a6afd9b6bfe9d6cfe9f6dfea16efea36ffea571fea772fea973feaa74feac76feae77feb078feb27afeb47bfeb67cfeb77efeb97ffebb81febd82febf84fec185fec287fec488fec68afec88cfeca8dfecc8ffecd90fecf92fed194fed395fed597fed799fed89afdda9cfddc9efddea0fde0a1fde2a3fde3a5fde5a7fde7a9fde9aafdebacfcecaefceeb0fcf0b2fcf2b4fcf4b6fcf6b8fcf7b9fcf9bbfcfbbdfcfdbf"));
+
+(Full grep result stored at: C:\Users\25114\AppData\Local\Temp\dsh-spill-Vulwl7\session-98b2b89ac234\5633fb90870c-grep-results.txt. Use read with offset/limit, or grep this path to search within it.)
+
+(Omitted 28287 bytes. Full formatted result stored at: C:\Users\25114\AppData\Local\Temp\dsh-spill-Vulwl7\session-98b2b89ac234\995c6d17a1c0-grep.txt. Use read with offset/limit, or grep this path to search within it.)
+
+[assistant • grep]
+{"path":"backend","pattern":"96\\.08|96\\.1|82\\.35|892|cross-encoder|Cross-Encoder|精排|rerank|RRFRanker|hybrid_search"}
+
+[assistant • grep]
+{"path":"frontend/src","pattern":"96\\.08|96\\.1|82\\.35|892|检索|BM25|RRF|Recall|知识问答|精排|rerank"}
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\.env.example","limit":80,"offset":1}
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\README.md","limit":220,"offset":1}
+
+[tool • grep]
+Found 67 matches
+
+backend\app\agents\knowledge.py
+Line 5: 1) 粗排召回：Milvus 服务端 dense（1024 维 COSINE）+ sparse（内置 BM25）双路召回，经 `RRFRanker(k=60)` 融合出 Top-10 候选；
+Line 6: 2) 精排重排：DashScope `gte-rerank-v2`（Cross-Encoder）对候选做交叉注意力重打分取最终 Top-K（异常自动降级回 RRF）。
+Line 59:     rerank: bool | None = None,
+Line 61:     """知识库检索：dense + BM25 两路召回 → 服务端 RRF 粗排 → Cross-Encoder 精排。"""
+Line 63:     return vector_store.hybrid_search(query, k=k, tenant_id=tenant_id, rerank=rerank)
+
+backend\app\mcp\servers\kb_server.py
+Line 69:     """在知识库里做混合检索（dense + BM25 + RRF 粗排 → Cross-Encoder 精排），只返回已发布文章（只读）。"""
+Line 77:         hits = _store().hybrid_search(
+
+backend\app\agents\settings.py
+Line 69:     # ---------- Rerank（Cross-Encoder 精排，二级检索漏斗）----------
+Line 70:     # 默认开启并直接复用 DASHSCOPE_API_KEY 调 gte-rerank-v2：
+Line 71:     # 先由 Milvus RRF 融合出 candidate_k 条粗排候选，再经 Cross-Encoder 交叉注意力重排取最终 top-k。
+Line 73:     rerank_enabled: bool = _env("RERANK_ENABLED", "true").lower() not in ("0", "false", "no", "off")
+Line 74:     rerank_api_key: str = _env("RERANK_API_KEY") or _env("DASHSCOPE_API_KEY") or _env("EMBEDDING_API_KEY")
+Line 75:     rerank_url: str = _env(
+Line 77:         "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
+Line 79:     rerank_model: str = _env("RERANK_MODEL", "gte-rerank-v2")
+Line 80:     rerank_candidate_k: int = int(_env("RERANK_CANDIDATE_K", "10") or 10)
+Line 81:     rerank_timeout: float = float(_env("RERANK_TIMEOUT", "6") or 6)
+Line 105:     def rerank_active(self) -> bool:
+Line 106:         """精排开关开启且有可用 Key 时生效。"""
+Line 107:         return bool(self.rerank_enabled and self.rerank_api_key)
+
+backend\app\agents\rag\embedding.py
+Line 8: 第一阶段粗排由 Milvus 完成（dense ANN + 内置 BM25 + 服务端 RRFRanker），第二阶段精排见 `reranker.py`。
+
+backend\app\agents\rag\__init__.py
+Line 1: """RAG 数据层：PDF 解析 / 结构感知切分 / Embedding / Milvus 混合检索 + Cross-Encoder 精排。
+Line 3: 统一入口在 `backend/app/agents/knowledge.py`（两阶段漏斗：Milvus RRF 粗排 → gte-rerank-v2 精排）。
+Line 4: 底下换向量库、换 embedding 或精排模型都不影响上层图结构。
+
+backend\app\agents\rag\reranker.py
+Line 1: """Cross-Encoder 精排层（Reranker）：RRF 粗排之后的第二阶段相关性重打分。
+Line 3: 为什么在 `Dense + BM25 + RRF` 之后还需要精排：
+Line 7: 3. 二级漏斗：先由 Milvus 服务端 RRF 快速融合出 Top-10 粗排候选，再送入 DashScope `gte-rerank-v2`
+Line 8:    做 Cross-Encoder 交叉注意力精排取最终 Top-K，兼顾召回率、首位精度与延迟（云端精排 ~100ms）。
+Line 12: - 若精排被关闭、未配 Key、网络超时或返回异常，自动退回 RRF 粗排前 K 条，绝不阻塞主链路。
+Line 30:     """复用长连接池，省掉每次精排的 TLS 握手开销（可省 40~80ms）。"""
+Line 33:         _http_client = httpx.Client(timeout=settings.rerank_timeout)
+Line 38:     """拼装送进 Cross-Encoder 的文本：带上文档与章节面包屑（若正文中尚未包含），帮助模型理解制度语境。"""
+Line 46: def rerank_hits(
+Line 53:     """用 DashScope `gte-rerank-v2` 对 RRF 粗排候选做 Cross-Encoder 精排，并与 RRF 粗排分做归一化融合，返回前 `top_k` 条。
+Line 56:     - Cross-Encoder 擅长捕捉深层语义指代（如"用掉的"→"已消耗"），但对纯术语精确匹配（如"事前申请"）有时会被高频词稀释；
+Line 57:     - 保留 RRF（Dense+BM25）与 Cross-Encoder 的双阶段归一化加权融合（默认 alpha=0.5），既能把 g33 等口语指代拉进 Top-3，
+Line 64:     if not settings.rerank_active or len(candidates) <= 1:
+Line 69:         "model": settings.rerank_model,
+Line 80:         "Authorization": f"Bearer {settings.rerank_api_key}",
+Line 85:         resp = _get_http_client().post(settings.rerank_url, headers=headers, json=payload)
+Line 90:             logger.warning("精排返回空结果，自动回退 RRF 粗排顺序")
+Line 99:                 row["rerank_score"] = round(float(item.get("relevance_score") or 0.0), 4)
+Line 100:                 row["channel"] = "hybrid+rerank"
+Line 107:         ce_vals = [r["rerank_score"] for r in scored]
+Line 113:             c_norm = (r["rerank_score"] - c_min) / (c_max - c_min + 1e-9)
+Line 116:         scored.sort(key=lambda x: (x["score"], x["rerank_score"], x["rrf_score"]), reverse=True)
+Line 119:         logger.warning("Cross-Encoder 精排不可用（%s: %s），自动降级为 RRF 粗排结果", type(exc).__name__, exc)
+
+backend\app\agents\rag\vector_store.py
+Line 1: """Milvus 数据层：混合检索粗排（Dense + 内置 BM25 + RRF）+ Cross-Encoder 精排二级漏斗。
+Line 8:   1) 粗排召回：`client.hybrid_search(reqs=[...], ranker=RRFRanker(k=60))` 融合出 Top-10 候选；
+Line 9:   2) 精排重排：DashScope `gte-rerank-v2`（Cross-Encoder）对候选交叉打分取最终 Top-K（异常自动降级回 RRF）。
+Line 13: 原生 MilvusClient 能直接调用服务端内置 BM25 Function 与双路 AnnSearchRequest + RRFRanker，
+Line 30:     RRFRanker,
+Line 35: from .reranker import rerank_hits
+Line 263: def hybrid_search(
+Line 268:     rerank: bool | None = None,
+Line 270:     """二级检索漏斗：Milvus 服务端双路召回 + RRF 粗排 → Cross-Encoder 精排。
+Line 274:        - RRF 粗排：`RRFRanker(k=60)` 融合出 `candidate_k`（默认 max(k, 10)）条候选；
+Line 275:     2. 第二阶段（Cross-Encoder 精排）：
+Line 276:        - 若启用精排（`rerank=True` 或默认跟随 `settings.rerank_active`），调用 `gte-rerank-v2`
+Line 278:        - 若关闭精排或精排接口超时异常，直接返回 RRF 粗排前 `k` 条。
+Line 280:     use_rerank = settings.rerank_active if rerank is None else (rerank and bool(settings.rerank_api_key))
+Line 281:     candidate_k = max(k, settings.rerank_candidate_k) if use_rerank else k
+Line 282:     per_channel_limit = max(candidate_k * 2, 15) if use_rerank else max(k * 2, 10)
+Line 303:     results = client.hybrid_search(
+Line 306:         ranker=RRFRanker(k=60),
+Line 311:     if use_rerank:
+Line 312:         return rerank_hits(query, candidates, top_k=k)
+
+[tool • grep]
+Found 6 matches
+
+frontend/src\views\ChatView.vue
+Line 89:     title: '知识问答',
+Line 90:     desc: '7 份制度、97 个切片，双路混合检索，回答必带引用。',
+Line 91:     foot: 'Recall@3 96.1% · 引用准确率 100%',
+Line 108:   { icon: 'book', text: '年假有多少天？', badge: '知识检索', tone: 'ok', note: '带引用回答' },
+Line 138:   if (typeof data.evidence_count === 'number') return `检索到 ${data.evidence_count} 条依据`
+
+frontend/src\utils\format.ts
+Line 36:   search_kb: '检索知识库',
+
+[tool • read]
+<path>D:\zuixin\.env.example</path>
+<type>file</type>
+<content>
+1: # ===== 后端环境变量示例：复制成仓库根 .env 即可（settings.py 会自动加载）=====
+2: # 复制：Copy-Item .env.example .env
+3: 
+4: # --- LLM（必填：缺了分类/作答会直接报错）---
+5: DEEPSEEK_API_KEY=
+6: DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+7: AGENT_MODEL=deepseek-chat
+8: 
+9: # --- 状态库：PostgresSaver（连不上自动回退 SQLite）---
+10: AGENT_CHECKPOINT_BACKEND=postgres
+11: DATABASE_URL=postgresql://smartdesk:smartdesk@localhost:5432/smartdesk
+12: 
+13: # --- 向量库：Milvus（必须启动；连不上会直接报错，不再本地兜底）---
+14: MILVUS_URI=http://localhost:19530
+15: MILVUS_COLLECTION=smartdesk_kb
+16: 
+17: # --- Embedding & Rerank（必填：缺了检索会直接报错；默认复用同一个 DASHSCOPE_API_KEY）---
+18: DASHSCOPE_API_KEY=
+19: EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+20: EMBEDDING_MODEL=text-embedding-v4
+21: EMBEDDING_DIM=1024
+22: # Cross-Encoder 精排：Milvus RRF 粗排取 RERANK_CANDIDATE_K 条 → gte-rerank-v2 重排取 top-k（设 false 可退回纯 RRF）
+23: RERANK_ENABLED=true
+24: RERANK_MODEL=gte-rerank-v2
+25: RERANK_CANDIDATE_K=10
+26: 
+27: # --- PDF 解析：MinerU 官方 SDK（mineru-open-sdk）---
+28: # flash 模式免登录可用（<=20 页，排队可能较慢）；precision 模式必须配 token
+29: # token 到 https://mineru.net/ 创建，填在下面（不要提交到 git）
+30: MINERU_API_KEY=
+31: MINERU_MODE=flash
+32: MINERU_OCR=false
+33: MINERU_LANGUAGE=ch
+34: MINERU_TIMEOUT=300
+35: # 待入库的 PDF 目录（ingest_docs.py 默认扫这里）
+36: KB_SOURCE_DIR=docs/kb/pdf
+37: 
+38: # --- MCP 工单服务：stdio（默认，子进程）或 memory（进程内，受限环境/CI 用）---
+39: # 留空 = 先试 stdio，起不来自动降级 memory
+40: TICKET_MCP_TRANSPORT=
+41: # 工单库路径，默认 .data/tickets.sqlite
+42: TICKET_DB_PATH=
+
+(End of file - total 42 lines)
+</content>
+
+[tool • read]
+<path>D:\zuixin\README.md</path>
+<type>file</type>
+<content>
+1: # SmartDesk AI · 企业内部服务台 Agent
+2: 
+3: **用自然语言问制度、查工单、建单、关单。Agent 要么给出带引用的答案，要么把写操作做成分级闸门——只读直通，可逆写要本人确认，不可逆/对外要主管审批，停下时状态写进 checkpoint，换个进程也能接着批。**
+4: 
+5: ![会话工作台：一次关单动作停在审批闸门](docs/screenshots/02-chat-approval.png)
+6: 
+7: 核心不是"把知识库接进模型"，而是把 **回答** 和 **动作** 分开：
+8: 
+9: - **回答**只依据检索到的制度，强制带 `[1][2]` 引用，找不到就说"知识库没有这条"并给下一步；
+10: - **动作**按危险程度分级，风险不是静态配置：关单时勾了"通知提单人"，风险就从「可逆写」自动升到「不可逆写」；
+11: - **谁批准**由权限算出来，不由对话里说了什么算：恢复时按恢复人的角色二次鉴权，发起人批自己的单会被标 `self_approved`。
+12: 
+13: ## 30 秒看懂
+14: 
+15: | | |
+16: |---|---|
+17: | **9 节点 / 5 条路由** | 分支全部集中在 `backend/app/agents/graph.py`，节点只返回字段，路由才知道下一站 |
+18: | **3 级风险闸门** | `action_spec.py` 的 `RISK_BY_OP` + `compute_risk()`：同一动作带不同参数，风险可以不同 |
+19: | **跨进程审批** | `interrupt` 挂起 → 记录进 `approvals`（带 `thread_id`）→ 审批中心点一下，用同一个 `thread_id` resume |
+20: | **2 个 MCP server / 9 个工具** | 工单库和知识库各一个 FastMCP server，**鉴权在 server 侧**（同租户 + 本人/特权），不靠前端藏按钮 |
+21: | **混合检索** | Milvus 稠密 1024 维 + 服务端内置中文 BM25，`RRFRanker(k=60)` 融合，带 `tenant_id` 过滤 |
+22: | **有评测** | 51 条标注问句：Recall@3 **96.08%**、MRR@3 **0.892**；20 条端到端用例引用准确率 **100%** |
+23: 
+24: ## 架构
+25: 
+26: ```mermaid
+27: flowchart TD
+28:   S([用户提问]) --> C["classify_request<br/>意图分类：chat / knowledge / action"]
+29: 
+30:   C -->|chat| R["compose_reply<br/>闲聊直接回，不检索"]
+31:   C -->|knowledge / action| G["gather_evidence<br/>检索制度 + 查工单事实"]
+32: 
+33:   G -->|knowledge| A["answer_with_citations<br/>只依据检索结果，强制引用"]
+34:   G -->|action| P["plan_action<br/>参数抽取 + 权限预检 + 定风险"]
+35: 
+36:   P -->|缺必填参数| M["ask_missing_info<br/>clarify 闸门"]
+37:   M --> P
+38: 
+39:   P -->|只读 read| E["execute_action<br/>全图唯一写节点"]
+40:   P -->|可逆写 write_reversible| CF["confirm_action<br/>本人确认"]
+41:   P -->|不可逆写 write_irreversible| AP["approve_action<br/>主管审批"]
+42: 
+43:   CF -->|改参数导致风险升级| AP
+44:   CF --> E
+45:   AP --> E
+46: 
+47:   A --> R
+48:   E --> R
+49:   R --> END([返回前端 / CLI])
+50: ```
+51: 
+52: 两条关键约束写死在代码里，不靠提示词：
+53: 
+54: 1. **只有 `execute_action` 会写**，且执行前再兜底一次 `state["risk"] == "write_irreversible" and not approved`；
+55: 2. **闸门是 `interrupt` 不是弹窗**：状态存 checkpoint，进程重启后同一 `thread_id` 仍可 resume —— 这是"跨进程人工审批"的实现方式。
+56: 
+57: ## 界面
+58: 
+59: | 会话工作台 | 审批中心 |
+60: |---|---|
+61: | ![欢迎页](docs/screenshots/01-welcome.png) | ![审批看板](docs/screenshots/03-approvals.png) |
+62: 
+63: 右侧「运行时」面板把 Agent 的 9 个节点、风险阶梯、结构化结果和等价命令行都摊开——演示时可以直接指着说"它停在这一格，是因为通知发出去撤不回"。
+64: 
+65: | 审批单据（可审阅） | 工单看板 |
+66: |---|---|
+67: | ![审批单据](docs/screenshots/02-chat-approval.png) | ![工单看板](docs/screenshots/04-tickets.png) |
+68: 
+69: 闸门卡片被做成一张**可审阅的单据**：为什么要审批、每个参数从哪来（你说的话 / 证据回填 / 上下文）、审批链上谁是发起人谁是待批人，都在卡片里。
+70: 
+71: 列表页的内容区有五种状态：读取中（骨架） / 真的没有数据 / 筛选后为空 / 读失败 / **后端没连上**（直接把启动命令写在页面中间，避免"看起来像空的"）。最后一种的样子见 [06-backend-down.png](docs/screenshots/06-backend-down.png)。
+72: 
+73: ## 技术栈
+74: 
+75: | 层 | 技术 |
+76: |---|---|
+77: | 编排 | LangGraph 1.x（`StateGraph` / `interrupt` / `Command` / checkpointer） |
+78: | 模型 | LangChain 1.x（`init_chat_model`；分类走结构化输出，参数抽取走确定性规则） |
+79: | 检索 | Milvus（稠密 1024 维 + 内置 BM25，服务端 `RRFRanker(k=60)`） |
+80: | 工具 | FastMCP 2 个 server（9 个工具），`MultiServerMCPClient` 装配，权限在 server 侧 |
+81: | 持久化 | PostgreSQL（`PostgresSaver`）+ 本地 SQLite 兜底；`approvals` 表存审批 |
+82: | 后端 | FastAPI + SSE（`/chat/stream`、`/runs/{id}/resume` 等） |
+83: | 前端 | Vue3 + Vite + TypeScript + Element Plus（深度定制，会话 / 审批 / 工单三页） |
+84: 
+85: ## 目录
+86: 
+87: ```
+88: backend/app/
+89:   agents/           主图与节点：graph.py state.py checkpoint.py knowledge.py
+90:     nodes/          9 个节点 + 动作规则表（action_spec.py）
+91:     rag/            Milvus 读写、embedding、MinerU 解析、结构感知切分
+92:     tools/          MCP 客户端与工具封装
+93:     prompts/        分类 / 作答 / 闲聊提示词
+94:   mcp/servers/      ticket_server.py / kb_server.py / guard.py（鉴权）
+95:   api/              main.py routes.py streaming.py deps.py
+96: frontend/src/        styles/（设计 token）components/ views/ stores/ utils/
+97: scripts/             run_graph（CLI）/ ingest_docs（入库）/ eval_rag（评测）/ trace_run / reset_demo（重置演示数据）
+98: deploy/              docker-compose.yml（Milvus / etcd / PostgreSQL / attu）
+99: docs/kb/             知识库源文档（7 份虚构制度）、PDF、解析产物、chunks
+100: docs/eval/           51 条评测集与报告
+101: docs/screenshots/    界面截图
+102: ```
+103: 
+104: ## 快速开始
+105: 
+106: ```bash
+107: # 0) 环境：Python 3.12 + Node 20+ + Docker Desktop
+108: uv sync                                        # 或：python -m venv .venv && .venv/Scripts/pip install -e .
+109: 
+110: # 1) 依赖服务（Milvus / PostgreSQL，deploy/.env 已配好默认端口与镜像）
+111: docker compose -f deploy/docker-compose.yml up -d
+112: docker compose -f deploy/docker-compose.yml ps      # 等 milvus healthy
+113: 
+114: # 2) 配置环境变量（自己填 key，不要提交）
+115: cp .env.example .env    # 填 DEEPSEEK_API_KEY、DASHSCOPE_API_KEY
+116: 
+117: # 3) CLI：知识问答 / 建单 / 审批
+118: .venv/Scripts/python.exe -m scripts.run_graph run --thread t1 -m "年假有多少天？"
+119: .venv/Scripts/python.exe -m scripts.run_graph run --thread t2 -m "帮我建个工单：VPN 连不上"
+120: .venv/Scripts/python.exe -m scripts.run_graph resume --thread t2 --approve
+121: 
+122: # 4) HTTP + SSE
+123: .venv/Scripts/python.exe -m uvicorn backend.app.api.main:app --port 8010
+124: 
+125: # 5) 前端（另开终端）
+126: cd frontend && npm install && npm run dev     # 浏览器开 http://localhost:5173
+127: ```
+128: 
+129: 首次使用需要入库（仓库未提交向量数据）：
+130: 
+131: ```bash
+132: .venv/Scripts/python.exe -m scripts.ingest_docs --md docs/kb/md --to-milvus
+133: ```
+134: 
+135: ## 一分钟演示脚本
+136: 
+137: 1. **知识问答**：`年假有多少天？` → 答复带 `[1][2]` 引用，右侧能看到 `gather_evidence` 的耗时；
+138: 2. **可逆写**：`帮我建个工单：会议室投影仪没信号` → 停在**确认**闸门，改一下标题再点通过，工单落库；
+139: 3. **不可逆写**：`把 TK-20261106-0005 关掉并通知提单人` → 风险从「可逆写」升级为「不可逆写」，停在**审批**闸门；
+140: 4. **换人审批**：左下角身份卡切成主管（`u-9001`）→ 审批中心点「通过」→ 会话用原 `thread_id` 恢复执行，工单状态变 `closed`；
+141: 5. **越权演示**：切成员工 `u-7777` 查别人的单 → `outcome=denied`，提示"只有提单人本人或主管能处理"。
+142: 
+143: ## 评测
+144: 
+145: 51 条标注问句（标注到"文档 + 小节"）对 97 个 chunk，20 条端到端用例：
+146: 
+147: ```bash
+148: .venv/Scripts/python.exe -m scripts.eval_rag --answers 20
+149: ```
+150: 
+151: | 指标 | 数值 |
+152: |---|---|
+153: | Recall@1 / Recall@3 | 82.35% / **96.08%** |
+154: | MRR@3 | 0.892 |
+155: | 端到端引用准确率 | **100%** |
+156: | 检索 P95 / 端到端 P95 | 310–530 ms / 2.9–6.4 s（随模型排队波动） |
+157: 
+158: ## 演示数据说明
+159: 
+160: `docs/kb/src/` 是**虚构公司「星澜科技」的制度文档**（文中已标注"技术演示用的虚构示例"），由脚本生成 PDF 后经 MinerU 解析入库。工单库里的数据都是演示数据。
+161: 
+162: ## 重置演示数据
+163: 
+164: 演示跑完想回到干净状态，用 `scripts/reset_demo.py`。**默认 dry-run**，只打印"会删什么"，加 `--yes` 才真的删：
+165: 
+166: ```bash
+167: # 看一眼会删什么（不执行）
+168: .venv/Scripts/python.exe -m scripts.reset_demo
+169: 
+170: # 清空工单 + 审批 + 全部会话，保留知识库
+171: .venv/Scripts/python.exe -m scripts.reset_demo --yes --keep-kb
+172: 
+173: # 只清掉网页端跑出来的会话，保留工单
+174: .venv/Scripts/python.exe -m scripts.reset_demo --yes --threads "web-*" --keep-tickets
+175: 
+176: # 连知识库也重建（下次 ingest 前是空的）
+177: .venv/Scripts/python.exe -m scripts.reset_demo --yes --kb
+178: ```
+179: 
+180: 它删的只有两类东西：SQLite 里的 `tickets` / `approvals` 行（表结构保留），以及 checkpoint 里的会话线程。知识库 chunk 默认保留，因为重建要跑一次 MinerU + 嵌入，比较慢。
+181: 
+182: 想拿副本库演练而不碰真数据，用 `TICKET_DB_PATH` 指过去就行（后端与 CLI 都会认这个变量，MCP 子进程也会原样透传）：
+183: 
+184: ```bash
+185: cp .data/tickets.sqlite .tmp-copy.sqlite
+186: TICKET_DB_PATH=.tmp-copy.sqlite .venv/Scripts/python.exe -m scripts.reset_demo --yes --keep-threads
+187: ```
+188: 
+189: ## 已知边界
+190: 
+191: - 没有登录/JWT：身份走请求头（`X-User-Id` / `X-Tenant-Id` / `X-Roles`），权限在 MCP server 侧校验；
+192: - 没有 cross-encoder 精排：两条检索未命中（`g33` / `g49`）需要精排才能补；
+193: - 单 Agent：单链路业务，拆多 Agent 只会多同步成本；
+194: - 审批只做"关单并通知""发布知识"两类不可逆动作，未覆盖派单 / SLA / 流转；
+195: - 参数抽取是规则不是模型：省一次 LLM 调用、防单号幻觉，抽不到的交给 `ask_missing_info` 反问；
+196: - 审批完成后**发起人不会收到推送**：审批中心改的是 `approvals` 表和会话的 checkpoint，员工那页要再发一句话 / 刷新才看得到结果（真实系统这里要接消息通知）；
+197: - 一条 thread 同时只能有一个挂起中的待办：挂起期间再发消息会返回 409，避免把 checkpoint 冲掉（前端已提示先处理卡片）。
+198: 
+199: ## 运行时注意
+200: 
+201: - **kb server 启动会预热 import**（`backend/app/mcp/servers/kb_server.py` 的 `_warmup()`）：FastMCP 把同步工具放到 worker 线程执行，`pymilvus`/`numpy` 的 C 扩展在该线程里首次 import 会卡住不返回；提前在主线程 import 一次，代价是每个 kb 工具子进程多约 1 秒启动时间。
+202: - 知识文章的可见性只有 `published` 一种状态（审批在写之前），`doc_status` 已经是 `vector_store.DOC_STATUS_PUBLISHED` 这个常量，读写都不再传参。
+
+(End of file - total 202 lines)
+</content>
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\docs\\讲解卡.md","limit":200,"offset":1}
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\AI-Agent简历项目规划.md","limit":150,"offset":340}
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\frontend\\src\\views\\ChatView.vue","limit":50,"offset":80}
+
+[tool • read]
+<path>D:\zuixin\docs\讲解卡.md</path>
+<type>file</type>
+<content>
+1: # SmartDesk AI 讲解卡
+2: 
+3: > 用途：面试 / 答辩 / 自己复习时"照着讲"。每个文件一句话，被追问时用"为什么"那段。
+4: > 代码规模：`backend/` 约 4200 行 / 36 个 py，`scripts/` 约 1500 行，`frontend/src` 约 1500 行 / 13 个文件。
+5: 
+6: ---
+7: 
+8: ## 0. 一句话讲这个项目
+9: 
+10: 企业内部 IT 服务台的 Agent：员工用自然语言提问或提需求，Agent 要么给**带引用的答案**，要么生成**待确认的工单**，要么停在**人工审批**等有权限的人点头。
+11: **动作按危险程度分三级**（只读直通 / 可撤销本人确认 / 不可逆需审批），**审批可以跨进程恢复**。
+12: 
+13: ---
+14: 
+15: ## 1. 一张图：9 个节点怎么走
+16: 
+17: ```
+18: START → classify_request → gather_evidence
+19:                              ├─(知识型)→ answer_with_citations → compose_reply → END
+20:                              └─(动作型)→ plan_action
+21:                                           ├─ 缺参数 → ask_missing_info（interrupt，答完回 plan_action）
+22:                                           ├─ 可撤销 → confirm_action（interrupt）
+23:                                           ├─ 不可逆 → approve_action（interrupt）
+24:                                           └─ 只读   → execute_action
+25:                                           → execute_action → compose_reply → END
+26: ```
+27: 
+28: - 闲聊：`classify_request` 直接回 `compose_reply`，不检索、不规划。
+29: - 分支**全部**写在 `graph.py` 的 5 个 `route_*` 函数里；节点只返回 dict。
+30: 
+31: ---
+32: 
+33: ## 2. 每个文件讲什么（按层）
+34: 
+35: ### 2.1 图与状态（最该先读）
+36: 
+37: | 文件 | 讲什么 | 一句话 |
+38: |---|---|---|
+39: | `backend/app/agents/state.py` | `TicketState`（18 个字段）+ frozen `UserContext` | State 是"一张随流程走的记录单"；Context 是"这次调用是谁"（只读、不进 checkpoint）；`thread_id` 进 State 是为了让审批留痕知道该 resume 哪条会话 |
+40: | `backend/app/agents/graph.py` | 装配 9 个节点 + 5 个路由函数 + `compile_graph` | 图只负责"连边"；决策在 `route_after_classify/gather/plan/confirm/human` |
+41: | `backend/app/agents/checkpoint.py` | `PostgresSaver` / `SqliteSaver` 二选一 | 每走完一个节点写一次档，进程杀掉换个进程还能接着跑 |
+42: | `backend/app/agents/settings.py` | `.env` → 配置对象 | 模型、Milvus、PG、租户默认值都在这里 |
+43: 
+44: ### 2.2 节点（9 个，加上 1 张表文件）
+45: 
+46: | 文件 | 讲什么 | 一句话 |
+47: |---|---|---|
+48: | `nodes/classify.py` | 结构化输出 `Classification` | 一次模型调用只判三件代码推不出来的事：问知识 / 要办事 / 闲聊 + 动作类型 + 指代是哪一张；**风险与 server 不在这里**（风险按表算、server 由 op 推导） |
+49: | `nodes/gather_evidence.py` | 取两袋证据 | 制度走 Milvus 检索，事实走只读 MCP 工具；两袋都塞进 State 再决定怎么说 |
+50: | `nodes/answer.py` | 带引用作答 | 只准用检索到的制度回答，每条标 `[1][2]`；检索不到就认怂并给三个下一步 |
+51: | `nodes/action_spec.py` | 三张表 | `RISK_BY_OP` / `compute_risk` / `GATE_BY_RISK` / `FIELD_LABELS`——风险与闸门全是数据，不是 if |
+52: | `nodes/plan_action.py` | 动作规划 | 抽参数 + 标来源（from_user / from_policy / agent_inferred）+ 算风险 + 选闸门 + 渲染确认卡片 |
+53: | `nodes/human_gate.py` | 三道闸门合一 | 澄清 / 确认 / 审批三种 interrupt；审批"发起≠批准"、恢复时二次鉴权、留痕写 `approvals` |
+54: | `nodes/execute.py` | 唯一能写库的节点 | 走 MCP 调工具；不可逆动作没有 `approval.approver`（没人批过）直接拒绝 |
+55: | `nodes/respond.py` | 拼人话 | 知识/动作分支是纯模板（不调模型）；**只有闲聊分支调一次模型**（`CHAT_SYSTEM_PROMPT`，不检索、不编造） |
+56: | `nodes/clarify.py` | 缺参数反问 | 少什么问什么；有多个候选就让用户挑 |
+57: 
+58: ### 2.3 RAG（知识库）
+59: 
+60: | 文件 | 讲什么 | 一句话 |
+61: |---|---|---|
+62: | `rag/vector_store.py` | Milvus 读写 | 稠密 1024 + 内置 BM25 双路召回，服务端 `RRFRanker(k=60)` 融合取 Top3 |
+63: | `rag/embedding.py` | 文本转向量 | 用 LangChain 现成 `OpenAIEmbeddings`（DashScope 兼容端点，单批 ≤10 条） |
+64: | `rag/pdf_parser.py` | PDF → Markdown | 调 MinerU 官方 SDK（flash 免 token），输出带层级的 Markdown |
+65: | `rag/splitter.py` | 结构感知切分 | 先按 `#/##/###` 切，超长块再递归切；每块前面拼【文档 · 章 · 节】面包屑 |
+66: | `knowledge.py` | 门面 | `search` / `ingest` / `publish_article` / `health`——节点只跟这个文件打交道 |
+67: 
+68: ### 2.4 工具（MCP）
+69: 
+70: | 文件 | 讲什么 | 一句话 |
+71: |---|---|---|
+72: | `mcp/servers/ticket_server.py` | 工单 server（5 工具 + 审批留痕 2 个） | 8 个 `@ticket_mcp.tool()`：建/改/关/查/列表 + 存审批/查审批 |
+73: | `mcp/servers/kb_server.py` | 知识 server（2 工具） | `search_kb` 给外部客户端复用；`publish_kb_article` 图内可达；`_warmup()` 见第 5 节第 4 条 |
+74: | `mcp/servers/guard.py` | 工具层鉴权 | 3 个角色（employee / approver / kb_owner），跨租户、越权一律 `forbidden` |
+75: | `tools/mcp_client.py` | MCP 客户端 | `MultiServerMCPClient` 起 stdio 子进程；沙箱禁子进程时自动降级进程内调用 |
+76: | `tools/ticket_tools.py` / `kb_tools.py` | 工具封装 | 节点不直接拼参数，走这里统一传 `actor` |
+77: 
+78: ### 2.5 HTTP / 流式
+79: 
+80: | 文件 | 讲什么 | 一句话 |
+81: |---|---|---|
+82: | `api/main.py` | FastAPI 入口 | `uvicorn backend.app.api.main:app --port 8010`；`/api/v1` 前缀 + `/health` |
+83: | `api/routes.py` | 6 个接口 | `/chat/stream`、`/runs/{id}/resume`、`/runs/{id}`、`/graph/mermaid`、`/tickets`、`/approvals` |
+84: | `api/streaming.py` | 把图事件变 SSE | 6 种事件：`meta / node / token / interrupt / done / error`；token 只转发 `answer_with_citations` 与 `compose_reply`（后者只在闲聊时调模型） |
+85: | `api/deps.py` | 身份依赖 | 三个请求头 `X-User-Id / X-Tenant-Id / X-Roles` → `UserContext`；换 JWT 只改这里 |
+86: | `api/schemas.py` | 请求/响应模型 | `ChatRequest` / `ResumeRequest`（把三种闸门的回答统一成一种 payload） |
+87: 
+88: ### 2.6 脚本与前端
+89: 
+90: | 文件 | 讲什么 |
+91: |---|---|
+92: | `scripts/run_graph.py` | CLI 入口：`run / resume / state / graph / tools / chat / approvals` |
+93: | `scripts/ingest_docs.py` | 入库：`--md docs/kb/md --to-milvus --force` |
+94: | `scripts/eval_rag.py` | 评测：51 条 golden set，出 Recall@1/3、MRR、引用准确率、延迟 |
+95: | `scripts/trace_run.py` | 逐节点跟读，教学用 |
+96: | `scripts/reset_demo.py` | 重置演示数据：默认 dry-run，`--yes` 才删；`--keep-kb` / `--keep-tickets` / `--threads "web-*"` 分范围保留 |
+97: | `frontend/src/views/ChatView.vue` | 会话页：SSE 渲染 + 闸门单据（`components/GateCard.vue`）+ 右侧运行时面板（`components/RuntimePanel.vue`） |
+98: | `frontend/src/views/ApprovalView.vue` | 审批中心：三列看板 + 右侧抽屉；`blockedReason()` 按风险反推"这一步在等谁"，`decide()` 用行上的 `thread_id` resume |
+99: | `frontend/src/views/TicketsView.vue` | 工单看板：分段筛选 + 搜索；过滤在 MCP 服务端做，不靠前端藏 |
+100: | `frontend/src/styles/app.css` | 设计 token 层：覆盖 Element Plus 的 `--el-*` 换靛蓝主色，风险三色（灰/琥珀/红）单独一套语义色 |
+101: | `frontend/src/api/sse.ts` | 解析 `event:/data:` 帧；`chatStream` / `resumeStream`；非 2xx 时把 `{"detail"}` 还原成可读报错 |
+102: 
+103: ---
+104: 
+105: ## 3. 八个"为什么"（面试主战场）
+106: 
+107: 1. **为什么用 LangGraph 手写，不用 `create_agent`？**
+108:    因为我要的是"**停下来等人**"：审批要跨进程、要能按新参数重算风险、要留痕。高层封装把工具调用交给模型自由决定，审批与审计就不可控了。
+109: 
+110: 2. **为什么 9 个节点这样切？**
+111:    沿一条请求的真实阶段切：理解 → 取证 → 分叉（回答/规划）→ 三个闸门 → 执行 → 拼话。每个节点只干一件事，出问题能定位到节点。
+112: 
+113: 3. **为什么"制度和事实"要分两袋？**
+114:    制度回答"规定是什么"（要引用），事实回答"这张单现在什么状态"（不要引用、不要编号）。混在一起会让模型把工具返回当制度引用，也会答非所问。
+115: 
+116: 4. **为什么风险必须由表决定，不能让模型判？**
+117:    模型可以被话术骗。风险只能是 `RISK_BY_OP` + `compute_risk`（参数升级：关单 + 通知 = 不可逆），这样"危险等级"可测、可审计、可讲。
+118: 
+119: 5. **为什么"发起 ≠ 批准"？**
+120:    员工该能提需求，但不能自己批自己。所以谁能发起是权限，能不能点通过看**恢复时**拿同一 `thread_id` 的那个人；有审批权的人自己批自己要标 `self_approved`。
+121:    也正因为"谁在恢复"决定结果，`approvals` 表必须存 `thread_id`——否则审批中心看到一条待办，也不知道该 resume 哪条会话（它跟 checkpoint 是两个存储）。
+122: 
+123: 6. **为什么确认卡改完参数还要重算风险？**
+124:    原本"关单"是可撤销，但勾了"通知提单人"就变成对外可见、不可撤回——不重算就会漏掉一道审批。所以 `confirm_action` 通过后重新 `compute_risk`，该升级就升级。
+125: 
+126: 7. **为什么只有 `execute_action` 能写库？**
+127:    写操作集中在一个节点，才能保证"进到这里之前该批的都批了"，再补一道 `approval.approver` 兜底。别的节点只读。
+128: 
+129: 8. **为什么检索用 RRF 而不是加权分数？**
+130:    稠密分数（余弦）和 BM25 分数不在一个量纲，归一化很脆；RRF 只用排名，稳、不用调参，取 `k=60` 让前几名权重接近、避免单路垄断。
+131: 
+132: ---
+133: 
+134: ## 4. 一条请求怎么走（演示脚本）
+135: 
+136: ```bash
+137: # 1) 知识型：带引用回答
+138: .venv\Scripts\python.exe -m scripts.run_graph run --thread t1 -m "年假有多少天？"
+139: 
+140: # 2) 动作型：抽出动作参数（action.args），停在确认门
+141: .venv\Scripts\python.exe -m scripts.run_graph run --thread t2 -m "帮我建个工单：VPN 连不上，影响 2 个人"
+142: .venv\Scripts\python.exe -m scripts.run_graph resume --thread t2 --approve
+143: 
+144: # 3) 审批门：员工发起、主管跨进程批准
+145: .venv\Scripts\python.exe -m scripts.run_graph run --thread t3 --role employee -m "把 TK-... 关掉，顺便通知提单人"
+146: .venv\Scripts\python.exe -m scripts.run_graph resume --thread t3 --role approver --user u-9001 --approve
+147: 
+148: # 4) 看审批表（带 thread_id，Web 审批中心就是按它 resume 的）
+149: .venv\Scripts\python.exe -m scripts.run_graph approvals --role approver
+150: ```
+151: 
+152: Web：`uvicorn backend.app.api.main:app --port 8010` + `cd frontend && npm run dev`（浏览器开 `http://localhost:5173`）。
+153: 审批中心的"通过/驳回"按钮会拿那一行 `approvals.thread_id` 调 `/runs/{id}/resume`——这就是"发起人在这页提交、主管在另一页点头、状态在 Postgres"的完整闭环。
+154: 
+155: ---
+156: 
+157: ## 5. 四个"坑"（面试加分项）
+158: 
+159: 1. **恢复时节点会重跑**：`interrupt` 恢复不是"从下一行继续"，而是重放该节点。所以写审批留痕要幂等（`save_approval` 先查 pending）。
+160: 2. **MCP 返回形状会变**：新版 adapters 返回 `[{"type":"text","text":...}]` 而不是 `ToolMessage`，所以要 `_text_of()` 兼容三种形状，否则建单报"无法解析的工具返回"。
+161: 3. **Word 表格边框不可靠**：做简历/文档时 `tblBorders=none` 在 LibreOffice 里仍会画线——与项目无关，但说明"别相信渲染一致性"。
+162: 4. **同步工具在 MCP worker 线程里首次 import 重依赖会卡死**：kb server 的工具调 `pymilvus`，FastMCP 把同步工具丢进 anyio worker 线程执行，那串 C 扩展在该线程里首次 import 实测 90s 不返回（栈停在 `numpy/_core/_multiarray_umath`；同样的 import 在主线程只要 1s）。表现是"调 `search_kb` 没反应、也不报错"。
+163:    定位方法：`faulthandler.dump_traceback_later(15, repeat=True)` 打服务端栈，再用"进程内直调 handler（通）/ 普通线程 import（通）/ MCP stdio 调（挂）"三组对照把范围压到传输层。
+164:    修法：`kb_server.py` 在 `__main__` 里 `_warmup()`，把 import 提前到主线程（只 import 不连库，`get_client()` 仍是懒连接），代价是子进程启动多约 1 秒。
+165: 
+166: ---
+167: 
+168: ## 6. 边界（不知道就说不了解）
+169: 
+170: - 没做**多 Agent**：单链路业务，拆多 Agent 只多同步成本。
+171: - 没做**精排**：两条检索未命中要靠 cross-encoder（gte-rerank-v2）才能补。
+172: - **审批权限**目前是请求头身份 + 工具层校验，没有登录/JWT。
+173: - 审批完成后**发起人不会收到推送**：审批中心改的是 `approvals` 表与会话 checkpoint，员工那页要刷新 / 再发一句话才看得到结果（真实系统这里要接消息通知）。
+174: - 一条 thread 同时只允许一个挂起待办：挂起期间再发消息会被 409 拒掉，避免冲掉 checkpoint。
+175: - 知识库是**演示语料**（7 份虚构制度），入库链路是真的。
+
+(End of file - total 175 lines)
+</content>
+
+[tool • read]
+<path>D:\zuixin\AI-Agent简历项目规划.md</path>
+<type>file</type>
+<content>
+340: - 建单去重也挪到 server：同租户 + 同提单人 + 同标题的未关闭单直接回原单（`deduplicated: true`）。
+341: 
+342: ### 4.6 检索链路（只用 Milvus 官方封装）
+343: 
+344: 1. `rag/embedding.py`：`OpenAIEmbeddings(model=text-embedding-v4, dimensions=1024)`（DashScope 兼容端点）。
+345: 2. `rag/vector_store.py`：collection `smartdesk_kb`，字段 `pk / doc_id / tenant_id / title / h1 / h2 / content / doc_status / dense / sparse`；`content` 开中文 analyzer + 内置 `Function(FunctionType.BM25)`，稀疏向量由 Milvus 生成。
+346: 3. 检索：`client.hybrid_search([AnnSearchRequest(dense, COSINE), AnnSearchRequest(sparse, BM25)], ranker=RRFRanker(k=60))`——融合在服务端，客户端只搬字段。
+347: 4. 过滤：`tenant_id == "..." and doc_status == "published"`（多租户 + 只搜已发布）。
+348: 5. `knowledge.py` 是唯一门面：连不上直接抛 `MilvusUnavailable`，不做假向量兜底。
+349: 
+350: ### 4.7 目录结构（现状）
+351: 
+352: ```
+353: backend/app/agents/
+354:   state.py  graph.py  knowledge.py  llm.py  settings.py  checkpoint.py
+355:   nodes/    classify / gather_evidence / answer / plan_action /
+356:             clarify / confirm / approve / execute / respond / human_gate
+357:   prompts/  service_desk.py
+358:   rag/      embedding.py  vector_store.py  pdf_parser.py（MinerU）  splitter.py（结构切分）
+359:   tools/    mcp_client.py  ticket_tools.py  kb_tools.py
+360: backend/app/mcp/servers/  ticket_server.py  kb_server.py  guard.py（工具层鉴权）
+361: scripts/    run_graph.py  trace_run.py  env_status.py  eval_rag.py  ingest_docs.py
+362:             gen_kb_pdfs.py  gen_code_reference.py  md2docx_min.py
+363: deploy/     docker-compose.yml（postgres / milvus / etcd / attu）+ init/01_init.sql
+364: docs/       AGENT-CODE-REFERENCE.md  STUDY-GUIDE.md  architecture/main-graph.mmd
+365:             eval/golden_set.jsonl（51 条）  eval/report.md（评测报告）
+366:             kb/（7 份制度文档的 src / pdf / md / chunks.jsonl）
+367: ```
+368: 
+369: ### 4.8 已经做完 vs 还没做
+370: 
+371: **当前代码规模**：`backend/` 约 4200 行 / 36 个 py（agents 节点 1278、rag 825、mcp 612、tools 371、api 525、根 617），`scripts/` 1531 行，`frontend/src` 1529 行 / 13 个文件；删除/合并后总行数比重构前少约 20%。
+372: 
+373: **已完成（有真实运行记录）**：九节点主图、四条路（知识 / 确认 / 审批 / 澄清）、**9 个 MCP 工具（工单 5 + 知识 2 + 治理 2）**、**工具层鉴权（server 侧按角色判权 + 服务端去重）**、**审批落表（approvals 一张表、审批中心 CLI 可查）**、**审批语义修正（发起≠批准：员工可提交，主管跨进程 resume 才生效；确认改出不可逆参数会重算风险并升级；execute 兜底复核 approval.approver）**、**真实知识库入库（7 份制度文档 → PDF → MinerU 官方 SDK 解析 → 结构感知切分 97 chunk → Milvus dense+BM25）**、PG checkpoint（跨进程恢复）、CLI 七子命令、逐节点跟读工具、命名重构与冗余清理、**51 条 golden set 评测（召回 / 引用 / 延迟）**、**FastAPI + SSE 接入（`/api/v1/chat/stream` 逐字 token + node/interrupt/done 事件、resume 走同一事件流、审批 HTTP 查询、404/403/409 错误码）**。
+374: 
+375: **待做**：Vue3 三页（会话 / 审批 / 检索调试）、可观测（LangSmith trace + 节点耗时 + token 成本）、知识库扩到 50–200 篇真实文档、Cross-Encoder 精排（gte-rerank-v2）、JWT 换掉请求头身份。
+376: 
+377: ### 4.9 简历里要的数字（都是本机实测）
+378: 
+379: 跑法：`python -m scripts.eval_rag --answers 20`（51 条 golden set，7 份制度文档、97 个 chunk，标注到「文档 + 小节」）：
+380: 
+381: | 指标 | 实测值 | 采集方式 |
+382: |---|---|---|
+383: | 检索 Recall@1 | **82.35%** | 期望小节排第一 |
+384: | 检索 Recall@3 | **96.08%** | 期望小节进前 3 |
+385: | MRR@3 | **0.8922** | 排名倒数的均值 |
+386: | 检索延迟 | 平均 **230–275 ms** / P95 **310–530 ms** | 单次 hybrid_search（已预热，随 Milvus 负载波动） |
+387: | 引用准确率 | **100%**（20 条端到端） | 回答引用的资料里含期望小节 |
+388: | 引用标注率 | **100%** | 回答正文带 [1] 标注 |
+389: | 端到端延迟 | 平均 **2.6–4.2 s** / P95 **2.9–6.4 s** | 分类 + 检索 + 生成（慢时是模型侧排队，多次实测区间） |
+390: | 知识库规模 | 7 份文档 / 42 章 / **97 chunk** | docs/kb/chunks.jsonl |
+391: | 审批覆盖 | 业务 7 个工具里 2 个强制审批 | 关单+通知、发布知识 |
+392: | 治理留痕 | 审批 4 态（pending / approved / edited / rejected） | approvals 一张表，CLI `approvals` 可查 |
+393: | 权限矩阵 | 3 角色 × 3 类操作，越权全部被拒 | 查/改/关他人单、跨租户、无 actor |
+394: 
+395: > 简历可直接抄：51 条真实问句评测集（对 97 个 chunk）Recall@3 96.08%、MRR 0.892，20 条端到端引用准确率 100%、P95 约 3 s（慢时 6 s，模型侧排队）；工具层 3 角色鉴权，越权请求在 server 侧被拒。
+396: 
+397: ### 4.10 三个"面试可讲"的取舍
+398: 
+399: 1. **为什么不用 `create_agent` 一把梭**：需要三个不同的"人"在不同点介入，`create_agent` 只有工具级审批钩子，做不出"确认卡 + 审批队列"。
+400: 2. **为什么分支写在 graph.py 而不是节点里 `Command(goto)`**：决策集中在一个文件、能被画出来、能被单独测；节点只算自己那段。
+401: 3. **为什么检索在 Milvus 而不在 Python**：dense + BM25 + RRF 都是服务端能力；手写 RRF 既慢又和索引 metric 容易不一致。
+402: 4. **为什么 SSE 不用 WebSocket**：这是单向流（服务端把 token / 节点进度 / interrupt 推给前端，前端只在用户点按钮时发 REST）；SSE 走普通 HTTP，断线重连和 `curl` 就能验，WebSocket 要多一层连接管理，收益只有一个"双向"我们没用到。真需要打断生成时，用 `X-Accel-Buffering: no` + 前端 abort 请求即可。
+403: ## 5. 落地路线（已完成 / 剩余）
+404: 
+405: | 阶段 | 内容 | 状态 |
+406: |---|---|---|
+407: | 1 | 主图跑通：九节点 + 三闸门 + `interrupt` / `Command(resume=)` | ✅ 完成 |
+408: | 2 | Milvus 知识库：混合检索 + 引用 + 多租户过滤 | ✅ 完成 |
+409: | 3 | MCP 工具化：2 server / 10 工具 + 风险分级 + 幂等去重 | ✅ 完成 |
+410: | 4 | 持久化切换：`SqliteSaver` → `PostgresSaver`（跨进程恢复） | ✅ 完成 |
+411: | 5 | 代码体检：命名统一、删冗余、路由集中、State 瘦身 | ✅ 完成 |
+412: | 6 | FastAPI + SSE：把 CLI 换成 HTTP 接口，前端能接 | ✅ 完成 |
+413: | 7 | Vue3 三页：会话（SSE 流式 + 引用卡片）/ 审批中心 / 检索调试 | ⬜ |
+414: | 8 | 评测与包装：golden set、A/B 对比表、README、3 分钟演示 | ⬜ |
+415: 
+416: 每阶段验收标准：能跑起来 + 能截图 + 能说清"为什么这么做"。
+417: ## 6. 简历写作与面试准备
+418: 
+419: ### 6.1 项目描述模板（4 条 bullet，数字已按实测填好）
+420: 
+421: > **SmartDesk AI｜企业内部服务台 Agent 平台**（个人项目 / 2026.xx–2026.xx）
+422: > 技术栈：Python 3.12 · LangGraph · LangChain 1.x · MCP（FastMCP） · Milvus · PostgreSQL · FastAPI + SSE
+423: 
+424: - 基于 **LangGraph 九节点主图**实现"提问 → 取证据 → 回答/动手"完整链路，用条件边把**澄清、确认、审批**三类人工介入拆成三个独立闸门，做到"不可逆动作 100% 需授权"。
+425: - 用 **PostgresSaver + thread_id** 让审批可跨进程恢复：进程退出后新进程 `resume` 继续跑，审批等待不依赖内存；连不上 PG 自动降级 SQLite。
+426: - 用 **Milvus 官方混合检索**（dense + 内置 BM25 + 服务端 `RRFRanker(k=60)`）做多租户知识库检索，答案强制带 `[1][2]` 引用（精确到"第 X 章 · X.Y 节"）；检索不到时明确"知识库没有这条"并给三个下一步，而不是编。
+427: - 知识库是**真文档流水线**：7 份企业制度文档 → PDF → **MinerU 官方 SDK 解析成 Markdown** → `MarkdownHeaderTextSplitter` 结构感知切分（原文 97 chunk，面包屑回填到每个 chunk）→ 带 `source_file / h2 / h3 / chunk_index` 的 Milvus 集合，幂等 upsert 可重复入库。
+428: - 把建单/改单/关单/发布知识封装成 **2 个 FastMCP server / 9 个工具**（工单 5 + 知识 2 + 治理 2），由 `MultiServerMCPClient` 装配；**权限判定放在 server 侧**（3 角色 × 3 类操作，越权请求一律 `forbidden`），写操作按风险分级走确认或审批，并用**服务端去重**（同租户 + 同提单人 + 同标题的未关闭单直接回原单）避免重复建单。
+429: - 审批**落服务端一张表**（`approvals` 4 态状态机），CLI `approvals` 子命令即"审批中心"的数据源；`save_approval` 幂等，`interrupt` 恢复重放不会重复插单。**发起权和审批权分开**：员工可以发起不可逆动作进入 pending 队列，只有 approver 用同一条 `thread_id` 来 `resume` 才生效（跨进程演示审批）；确认卡里改出不可逆参数会重算风险并补一道审批；`execute_action` 最后再复核 `approval.approver`；没权限的人点通过**直接回一句话结束**（`outcome=denied`），不替他做决定；越权操作（动别人的单/没 kb_owner 发知识）在 `plan_action` 就按 server 返回的 `can_write` 直接拒绝（同样 `outcome=denied`），不弹卡不排队。
+430: - **FastAPI + SSE 接入**：`POST /api/v1/chat/stream` 把图事件实时推给前端（`meta → node → token → interrupt → done`，token 只转发 `answer_with_citations` 的增量）；停下时前端拿到 `interrupt` 载荷（等于一张确认/审批卡片），点按钮走 `POST /runs/{id}/resume`，**同一条 thread_id 可换身份 resume**（员工发起、主管跨进程批准就是这么演的）；HTTP 层只做"解析请求 → 组 `UserContext` → 调 `get_graph()`"，权限仍在 MCP server，404/403/409 三种错误分开。
+431: - 自建 **51 条 golden set**（真实问句对 97 chunk）做回归评测：检索 **Recall@3 96.08% / Recall@1 82.35% / MRR 0.892**，20 条端到端用例**引用准确率 100%**，检索 P95 310–530 ms、端到端 P95 2.9–6.4 s（多次实测，随模型延迟波动）。
+432: 
+433: （以上数字全部来自 `python -m scripts.eval_rag --answers 20` 的真实输出，报告在 `docs/eval/report.md`；换机器或换模型后重跑再改数字，**没测的不要写**。）
+434: ### 6.2 差写法 vs 好写法
+435: 
+436: | ❌ 差 | ✅ 好 | 为什么 |
+437: |---|---|---|
+438: | 使用 LangChain 和 LangGraph 开发了一个智能客服系统，实现了知识库问答功能。 | 基于 LangGraph 构建工单处理主图，用 `interrupt` 实现人工审批、`PostgresSaver` 持久化，服务重启后审批仍可恢复。 | 有框架细节、有机制、有可验证的效果 |
+439: | 使用 Milvus 做向量检索，效果很好。 | Milvus 稠密+BM25 混合检索（RRF k=60）+ gte-rerank-v2 精排，Recall@5 从 0.61 → 0.87。 | 有方案对比、有指标 |
+440: | 实现了多 Agent 协作。 | 用 Send API 按产品线并行 N 个分析 worker，日报生成从 3 分钟降至 40 秒。 | 有具体 API、有对比数字 |
+441: | 熟悉 FastAPI 和 Vue。 | FastAPI + SSE 把 Agent 事件流式推给前端（token 逐字、interrupt 事件带审批卡片），resume 走同一 thread；审批通过到执行完成实测 380 ms。 | 技能写成"做到什么程度" |
+442: 
+443: ### 6.3 技术栈行的写法
+444: 
+445: 分三档写，别一行塞满：
+446: - **熟练**：Python、FastAPI、LangChain、LangGraph、RAG、Milvus、SQL
+447: - **掌握**：MCP、Vue3、PostgreSQL、Docker、SSE、Redis
+448: - **了解**：LangSmith、vLLM、K8s、ClickHouse
+449: 
+450: ### 6.4 高频面试 17 问（按你项目会追问的顺序）
+451: 
+452: **A. LangGraph / 状态**
+453: 1. `create_agent` 底层做了什么？和手写 `StateGraph` 有什么区别？（答：llm 节点 + tools 节点 + 条件边 + compile；手写才能做多节点业务编排与 interrupt 审批）
+454: 2. `AgentState` 是什么？reducer（`Annotated[list, add_messages]` / `operator.add`）解决什么问题？不写 reducer 会怎样？（默认覆盖，并行分支会丢数据）
+455: 3. Context / State / Store 三者的区别和生命周期？（单次调用只读 / 单 thread 可变 / 跨 thread 持久）
+456: 4. 为什么 `interrupt` 必须配 checkpointer？恢复时发生了什么？（暂停点写入 checkpoint，`Command(resume=...)` 从该点续跑）
+457: 5. `HumanInTheLoopMiddleware` 和手写 `interrupt` 怎么选？（工具级危险动作 → Middleware；需要展示业务上下文的多字段审批 → 手写）
+458: 6. `Command(goto=...)` 和 `add_conditional_edges` 怎么选？（决策与更新同源时用 Command，纯分支用条件边）
+459: 
+460: **B. RAG / Milvus**
+461: 7. 稠密 vs 稀疏各擅长什么？为什么要混合检索？中文分词怎么配？（`analyzer_params={"type":"chinese"}`）
+462: 8. 为什么用 RRF 而不是加权融合？k=60 是什么？加权前为什么要归一化？
+463: 9. 两阶段检索（Bi-Encoder 初筛 + Cross-Encoder 精排）为什么便宜？`fetch_k` 怎么定？
+464: 10. chunk 大小 / overlap 怎么定？`MarkdownHeaderTextSplitter` 有什么好处？（保留标题层级做 metadata 过滤与溯源）
+465: 11. 2-Step RAG 和 Agentic RAG 怎么取舍？（固定问答用 2-Step 省钱稳定；多跳/需判断是否检索用 Agentic）
+466: 12. 怎么评测 RAG？Recall@5 / MRR / 引用准确率分别怎么算？golden set 怎么造？
+467: 
+468: **C. MCP / 多 Agent / 工程**
+469: 13. MCP 是什么？Host/Client/Server 关系？stdio 与 streamable_http 各自适用场景？
+470: 14. 怎么保证 MCP 工具安全？（租户白名单、只读账号、SQL 表白名单 + LIMIT、超时重试、审计日志）
+471: 15. 什么时候值得上多 Agent？Subagents 与 Handoffs 的区别？为什么"优先单 Agent"？
+472: 16. SSE 流式怎么实现？断线重连、半截工具调用、前端如何渲染工具状态？
+473: 17. 生产上怎么控成本与延迟？（模型路由/降级、摘要中间件、embedding 缓存、异步化、并行 Send）
+474: 
+475: > 准备方式：每题写成"30 秒版 + 2 分钟版"，2 分钟版必须落到你项目里的具体文件和代码。
+476: 
+477: ### 6.5 岗位匹配（投递时怎么对上 JD）
+478: 
+479: | JD 关键词 | 你项目里的对应证据 |
+480: |---|---|
+481: | 熟悉 LangChain / LangGraph | 主图 + 子图 + Command 路由 + checkpointer |
+482: | RAG / 向量数据库 | Milvus 双路混合检索 + 精排 + 评测报告 |
+483: | Agent 工具调用 / MCP | FastMCP 三个 Server + 动态挂载 + 审计 |
+484: | 后端服务开发 | FastAPI 分层 + SSE + JWT/RBAC + 异步任务 |
+485: | 工程化 / 部署 | Docker Compose 一键起 + 日志 |
+486: | 前端（若有） | Vue3 审批中心 + 检索调试台 |
+487: 
+488: ---
+489: 
+
+(Showing lines 340-489 of 618. Use offset=490 to continue.)
+</content>
+
+[tool • read]
+<path>D:\zuixin\frontend\src\views\ChatView.vue</path>
+<type>file</type>
+<content>
+80:   if (it?.type === 'approve') return { tone: 'warn', text: '等待审批' }
+81:   if (it?.type === 'confirm') return { tone: 'warn', text: '等待确认' }
+82:   if (it) return { tone: 'warn', text: '等待补充' }
+83:   return { tone: 'ok', text: '已回复' }
+84: })
+85: 
+86: const CAPS = [
+87:   {
+88:     icon: 'book',
+89:     title: '知识问答',
+90:     desc: '7 份制度、97 个切片，双路混合检索，回答必带引用。',
+91:     foot: 'Recall@3 96.1% · 引用准确率 100%',
+92:   },
+93:   {
+94:     icon: 'shield',
+95:     title: '受控执行',
+96:     desc: '9 节点状态机，写操作按风险分三级，唯一的写节点在最后。',
+97:     foot: '读 / 可逆写 / 不可逆写',
+98:   },
+99:   {
+100:     icon: 'check',
+101:     title: '审批留痕',
+102:     desc: '发起≠批准，恢复时按恢复人身份二次鉴权，自审会被标记。',
+103:     foot: 'approvals 每次决策落库',
+104:   },
+105: ]
+106: 
+107: const EXAMPLES = [
+108:   { icon: 'book', text: '年假有多少天？', badge: '知识检索', tone: 'ok', note: '带引用回答' },
+109:   { icon: 'ticket', text: '帮我建个工单：会议室投影仪没信号', badge: '需要确认', tone: 'warn', note: '本人点一下才写' },
+110:   { icon: 'lock', text: '把 TK-20261106-0005 关掉并通知提单人', badge: '需要审批', tone: 'bad', note: '通知外发不可撤回' },
+111:   { icon: 'search', text: '帮我查一下我上一张工单', badge: '直接查', tone: 'ghost', note: '只读，不需要闸门' },
+112: ]
+113: 
+114: function render(text: string): string {
+115:   return md.render(text || '')
+116: }
+117: 
+118: function pushAssistant(text = ''): ChatItem {
+119:   const item: ChatItem = { role: 'assistant', text, citations: [], streaming: true, nodes: [] }
+120:   items.value.push(item)
+121:   return items.value[items.value.length - 1]
+122: }
+123: 
+124: function lastAssistant(): ChatItem | undefined {
+125:   for (let i = items.value.length - 1; i >= 0; i -= 1) {
+126:     if (items.value[i].role === 'assistant') return items.value[i]
+127:   }
+128:   return undefined
+129: }
+
+(Showing lines 80-129 of 946. Use offset=130 to continue.)
+</content>
+
+[assistant • glob]
+{"pattern":"**/*.md"}
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\pyproject.toml","limit":100,"offset":1}
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\backend\\app\\agents\\nodes\\gather_evidence.py","limit":80,"offset":1}
+
+[assistant • read]
+{"file_path":"D:\\zuixin\\backend\\app\\agents\\rag\\vector_store.py","limit":70,"offset":260}
+
+[tool • glob]
+.venv\Lib\site-packages\openai\_vendor\httpx_aiohttp\FORK.md
+.venv\Lib\site-packages\openai\_vendor\httpx_aiohttp\README.md
+.venv\Lib\site-packages\openai\lib\live\README.md
+.venv\Lib\site-packages\openai\lib\responses_websocket\README.md
+.venv\Lib\site-packages\openai\resources\conversations\api.md
+.venv\Lib\site-packages\openai\resources\live\api.md
+.venv\Lib\site-packages\openai\resources\realtime\api.md
+.venv\Lib\site-packages\openai\resources\responses\api.md
+.venv\Lib\site-packages\openai\resources\webhooks\api.md
+.venv\Lib\site-packages\idna-3.20.dist-info\licenses\LICENSE.md
+.venv\Lib\site-packages\httpx2-2.16.0.dist-info\licenses\LICENSE.md
+.venv\Lib\site-packages\httpcore2-2.16.0.dist-info\licenses\LICENSE.md
+.venv\Lib\site-packages\httpcore-1.0.9.dist-info\licenses\LICENSE.md
+.venv\Lib\site-packages\uuid_utils-0.19.0.dist-info\licenses\LICENSE.md
+.venv\Lib\site-packages\numpy\random\LICENSE.md
+.venv\Lib\site-packages\numpy-2.5.4.dist-info\licenses\numpy\fft\pocketfft\LICENSE.md
+.venv\Lib\site-packages\numpy-2.5.4.dist-info\licenses\numpy\random\LICENSE.md
+.venv\Lib\site-packages\numpy-2.5.4.dist-info\licenses\numpy\random\src\distributions\LICENSE.md
+.venv\Lib\site-packages\numpy-2.5.4.dist-info\licenses\numpy\random\src\mt19937\LICENSE.md
+.venv\Lib\site-packages\numpy-2.5.4.dist-info\licenses\numpy\random\src\pcg64\LICENSE.md
+.venv\Lib\site-packages\numpy-2.5.4.dist-info\licenses\numpy\random\src\philox\LICENSE.md
+.venv\Lib\site-packages\numpy-2.5.4.dist-info\licenses\numpy\random\src\sfc64\LICENSE.md
+.venv\Lib\site-packages\numpy-2.5.4.dist-info\licenses\numpy\random\src\splitmix64\LICENSE.md
+.venv\Lib\site-packages\numpy-2.5.4.dist-info\licenses\numpy\_core\src\npysort\x86-simd-sort\LICENSE.md
+.venv\Lib\site-packages\openapi_pydantic\v3\v3_0\README.md
+.venv\Lib\site-packages\openapi_pydantic\v3\v3_1\README.md
+.venv\Lib\site-packages\aiofile-3.12.3.dist-info\licenses\LICENCE.md
+.venv\Lib\site-packages\caio\src\threadpool\README.md
+.venv\Lib\site-packages\docstring_parser-0.18.0.dist-info\licenses\LICENSE.md
+.venv\Lib\site-packages\win32comext\mapi\NOTICE.md
+docs\kb\src\01-员工手册.md
+docs\kb\src\02-财务报销与开票管理制度.md
+docs\kb\src\03-账号与权限管理办法.md
+docs\kb\src\04-客户订单退款与售后规则.md
+docs\kb\src\05-开放平台API限流与配额说明.md
+docs\kb\src\06-IT服务级别与工单处理规范.md
+docs\kb\src\07-多租户与数据隔离规范.md
+docs\kb\md\05-开放平台API限流与配额说明.md
+docs\kb\md\06-IT服务级别与工单处理规范.md
+docs\kb\md\07-多租户与数据隔离规范.md
+docs\kb\md\01-员工手册.md
+docs\kb\md\02-财务报销与开票管理制度.md
+docs\kb\md\03-账号与权限管理办法.md
+docs\kb\md\04-客户订单退款与售后规则.md
+.venv\Lib\site-packages\python_dateutil-4.0.0.dist-info\licenses\AUTHORS.md
+frontend\node_modules\@babel\helper-string-parser\README.md
+frontend\node_modules\@babel\helper-validator-identifier\README.md
+frontend\node_modules\@babel\types\README.md
+frontend\node_modules\@rollup\rollup-win32-x64-gnu\README.md
+frontend\node_modules\@rollup\rollup-win32-x64-msvc\README.md
+frontend\node_modules\@types\estree\README.md
+frontend\node_modules\@types\trusted-types\README.md
+frontend\node_modules\@types\web-bluetooth\README.md
+frontend\node_modules\@types\lodash-es\README.md
+frontend\node_modules\@types\mdurl\README.md
+frontend\node_modules\@types\linkify-it\README.md
+frontend\node_modules\@types\lodash\README.md
+frontend\node_modules\@types\markdown-it\README.md
+frontend\node_modules\@types\node\README.md
+frontend\node_modules\undici-types\README.md
+frontend\node_modules\d3-sankey\node_modules\d3-path\README.md
+frontend\node_modules\d3-sankey\README.md
+frontend\node_modules\uc.micro\README.md
+frontend\node_modules\vue-component-type-helpers\README.md
+frontend\node_modules\d3-sankey\node_modules\d3-shape\README.md
+frontend\node_modules\mdurl\README.md
+frontend\node_modules\punycode.js\README.md
+frontend\node_modules\linkify-it\README.md
+frontend\node_modules\@vue\compiler-ssr\README.md
+frontend\node_modules\picocolors\README.md
+frontend\node_modules\@popperjs\core\LICENSE.md
+frontend\node_modules\tinyglobby\README.md
+frontend\node_modules\fdir\README.md
+frontend\node_modules\@popperjs\core\README.md
+frontend\node_modules\d3-sankey\node_modules\internmap\README.md
+frontend\node_modules\@vitejs\plugin-vue\README.md
+frontend\node_modules\cose-base\README.md
+frontend\node_modules\@floating-ui\dom\README.md
+frontend\node_modules\@floating-ui\core\README.md
+frontend\node_modules\argparse\CHANGELOG.md
+frontend\node_modules\@vue\shared\README.md
+frontend\node_modules\csstype\README.md
+frontend\node_modules\argparse\README.md
+frontend\node_modules\layout-base\README.md
+frontend\node_modules\cytoscape-cose-bilkent\README.md
+frontend\node_modules\normalize-wheel-es\README.md
+frontend\node_modules\async-validator\LICENSE.md
+frontend\node_modules\ts-dedent\README.md
+frontend\node_modules\memoize-one\README.md
+frontend\node_modules\async-validator\README.md
+frontend\node_modules\picomatch\README.md
+frontend\node_modules\estree-walker\CHANGELOG.md
+frontend\node_modules\pinia\README.md
+frontend\node_modules\katex\node_modules\commander\Readme.md
+frontend\node_modules\@floating-ui\utils\README.md
+frontend\node_modules\magic-string\README.md
+frontend\node_modules\estree-walker\README.md
+frontend\node_modules\@vue\server-renderer\README.md
+frontend\node_modules\@vue\compiler-core\README.md
+frontend\node_modules\@vueuse\core\README.md
+
+(Showing 100 of 274 paths. Full sorted result stored at: C:\Users\25114\AppData\Local\Temp\dsh-spill-Vulwl7\session-98b2b89ac234\001c68c7edcd-glob-results.txt. Use read with offset/limit, or grep this path to search within it.)
+
+[tool • read]
+<path>D:\zuixin\pyproject.toml</path>
+<type>file</type>
+<content>
+1: [project]
+2: name = "smartdesk-ai"
+3: version = "0.1.0"
+4: description = "SmartDesk AI —— 基于 LangGraph 与 MCP 的企业内部服务台受控执行 Agent"
+5: requires-python = ">=3.12"
+6: dependencies = [
+7:     # 编排与模型
+8:     "langchain>=1.0",
+9:     "langchain-core>=1.0",
+10:     "langgraph>=1.0",
+11:     "langchain-openai>=1.0",
+12:     "langgraph-checkpoint-sqlite>=2.0",
+13:     "langgraph-checkpoint-postgres>=3.0",
+14:     "psycopg[binary]>=3.2",
+15:     "python-dotenv>=1.0",
+16:     # 工具层：fastmcp 4.x 依赖 mcp>=2，而 langchain-mcp-adapters 0.3.x 要求 mcp<2，
+17:     # 所以这两条必须锁在 3.x / 1.x，否则 get_tools() 会 ImportError: RequestContext
+18:     "fastmcp>=3.2,<4",
+19:     "mcp>=1.24,<2",
+20:     "langchain-mcp-adapters>=0.3,<0.4",
+21:     # 检索
+22:     "pymilvus>=2.6",
+23:     # HTTP 层（/chat/stream 走 StreamingResponse，SSE 不需要额外依赖）
+24:     "fastapi>=0.115",
+25:     "uvicorn[standard]>=0.30",
+26:     # 知识库生产链：制度 md → PDF → MinerU 解析 → 切分
+27:     "reportlab>=4.0",
+28:     "pypdf>=5.0",
+29:     "mineru-open-sdk>=0.2",
+30:     "langchain-text-splitters>=1.0",
+31: ]
+32: 
+33: [[tool.uv.index]]
+34: url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+35: default = true
+36: 
+
+(End of file - total 36 lines)
+</content>
+
+[tool • read]
+<path>D:\zuixin\backend\app\agents\nodes\gather_evidence.py</path>
+<type>file</type>
+<content>
+1: """取证据（gather_evidence）：主图第 3 个节点，一次调用里做两件事。
+2: 
+3: 为什么要这个节点（面试常问）：
+4: - 回答"怎么办"需要公司制度（policy_evidence），回答"到哪一步了"需要业务事实（facts）；
+5: - 两者都是"动手/开口之前必须先看清的东西"，所以放同一个节点，先取制度再取事实。
+6: 
+7: "提到了哪张单"是独立于 intent/op 的一条轴：问制度时也可能提到单号
+8: （"TK-… 按规定能不能延期"）。这条轴**由模型判断**（`classification.reference` 枚举：
+9: none / number / my_last / my_recent），代码只做两件事：单号必须正则校验通过才采信、
+10: 指代类型翻译成查几张。**这里不读 `op`**——op 是 `plan_action`（本节点之后）才有的字段。
+11: 
+12: 本节点遵循单一职责原则：只负责检索制度与查询只读事实，不生成自然语言回复。
+13: """
+14: 
+15: from __future__ import annotations
+16: 
+17: import logging
+18: from typing import Any
+19: 
+20: from .. import knowledge
+21: from langgraph.runtime import Runtime
+22: 
+23: from ..state import TicketState, UserContext, actor_of
+24: from ..tools import ticket_tools
+25: from .plan_action import find_ticket_no
+26: 
+27: logger = logging.getLogger(__name__)
+28: 
+29: TOP_K = 3
+30: 
+31: # 动作型检索用的"主题词"：把口语化请求翻成知识库里可能出现的说法
+32: ACTION_TOPICS: dict[str, str] = {
+33:     "create_ticket": "工单 建单 提交流程 响应时间 优先级",
+34:     "update_ticket": "工单 修改 变更 处理时限",
+35:     "close_ticket": "工单 关闭 结案 通知 回访",
+36:     "publish_kb_article": "知识库 发布 文章 审核规范",
+37:     "query_ticket": "工单 查询 单号 状态",
+38:     "list_tickets": "工单 列表 我的工单 未结单",
+39: }
+40: 
+41: # "提到了哪张单"由模型判断（classification.reference），这里只做两件事：
+42: # 单号必须能正则校验通过才采信（防模型编造），指代类型翻译成"查几张"。
+43: LAST_ONE = 1
+44: RECENT_MANY = 5
+45: 
+46: 
+47: def _policy_query(state: TicketState) -> str:
+48:     """知识型用员工原话；动作型用「主题词 + 动作」，避免把'帮我建个工单：财务系统登录不上'
+49:     拿去检索出考勤/限流这类不相关制度。"""
+50:     if state.get("intent") != "action":
+51:         return state.get("query", "")
+52:     action = state.get("action") or {}
+53:     topic = ACTION_TOPICS.get(action.get("op", ""), "")
+54:     return f"{topic} {state.get('query', '')}".strip()
+55: 
+56: 
+57: def retrieve_policy(state: TicketState) -> list[dict[str, Any]]:
+58:     """查公司制度：Milvus 混合检索 → policy_evidence（带引用）。"""
+59:     try:
+60:         hits = knowledge.search(_policy_query(state), k=TOP_K, tenant_id=state.get("tenant_id"))
+61:     except knowledge.MilvusUnavailable as exc:
+62:         logger.warning("知识库不可用，跳过制度检索：%s", exc)
+63:         return []
+64:     evidence: list[dict[str, Any]] = []
+65:     for index, hit in enumerate(hits, start=1):
+66:         evidence.append(
+67:             {
+68:                 "idx": index,
+69:                 "doc_id": hit["doc_id"],
+70:                 "title": hit["title"],
+71:                 # chapter = 第 X 章，section = X.Y 节（引用串里两层都带）
+72:                 "chapter": hit.get("h2", ""),
+73:                 "section": hit.get("h3") or hit.get("h2") or "",
+74:                 "source_file": hit.get("source_file", ""),
+75:                 "score": hit["score"],
+76:                 "snippet": (hit.get("content") or "")[:180],
+77:                 "citation": f"[{index}] {hit.get('citation') or hit['title']}",
+78:             }
+79:         )
+80:     return evidence
+
+(Showing lines 1-80 of 138. Use offset=81 to continue.)
+</content>
+
+[tool • read]
+<path>D:\zuixin\backend\app\agents\rag\vector_store.py</path>
+<type>file</type>
+<content>
+260:     }
+261: 
+262: 
+263: def hybrid_search(
+264:     query: str,
+265:     k: int = 3,
+266:     tenant_id: str | None = None,
+267:     *,
+268:     rerank: bool | None = None,
+269: ) -> list[dict[str, Any]]:
+270:     """二级检索漏斗：Milvus 服务端双路召回 + RRF 粗排 → Cross-Encoder 精排。
+271: 
+272:     1. 第一阶段（Milvus 服务端一次 RPC）：
+273:        - 两路召回：`AnnSearchRequest(dense, metric=COSINE)` + `AnnSearchRequest(sparse, metric=BM25)`；
+274:        - RRF 粗排：`RRFRanker(k=60)` 融合出 `candidate_k`（默认 max(k, 10)）条候选；
+275:     2. 第二阶段（Cross-Encoder 精排）：
+276:        - 若启用精排（`rerank=True` 或默认跟随 `settings.rerank_active`），调用 `gte-rerank-v2`
+277:          对候选集做 query-chunk 交叉注意力打分并截断至 `k` 条；
+278:        - 若关闭精排或精排接口超时异常，直接返回 RRF 粗排前 `k` 条。
+279:     """
+280:     use_rerank = settings.rerank_active if rerank is None else (rerank and bool(settings.rerank_api_key))
+281:     candidate_k = max(k, settings.rerank_candidate_k) if use_rerank else k
+282:     per_channel_limit = max(candidate_k * 2, 15) if use_rerank else max(k * 2, 10)
+283: 
+284:     client = ensure_collection()
+285:     expr = _filter_expr(tenant_id)
+286:     vector = get_embedder().embed_query(query)
+287:     reqs = [
+288:         AnnSearchRequest(
+289:             data=[vector],
+290:             anns_field=DENSE_FIELD,
+291:             param={"metric_type": "COSINE"},
+292:             limit=per_channel_limit,
+293:             expr=expr,
+294:         ),
+295:         AnnSearchRequest(
+296:             data=[query],
+297:             anns_field=SPARSE_FIELD,
+298:             param={"metric_type": "BM25"},
+299:             limit=per_channel_limit,
+300:             expr=expr,
+301:         ),
+302:     ]
+303:     results = client.hybrid_search(
+304:         collection_name=settings.milvus_collection,
+305:         reqs=reqs,
+306:         ranker=RRFRanker(k=60),
+307:         limit=candidate_k,
+308:         output_fields=OUTPUT_FIELDS,
+309:     )
+310:     candidates = [_hit_row(hit, "hybrid") for hit in (results[0] if results else [])]
+311:     if use_rerank:
+312:         return rerank_hits(query, candidates, top_k=k)
+313:     return candidates[:k]
+314: 
+315: 
+316: def publish_article(
+317:     *,
+318:     title: str,
+319:     content: str,
+320:     tags: list[str] | None = None,
+321:     change_note: str = "",
+322:     tenant_id: str | None = None,
+323: ) -> dict[str, Any]:
+324:     """把一篇知识文章写进 Milvus（供 kb-server 的 publish_kb_article 调用）。
+325: 
+326:     人工发布不走文档切分，所以只有一块；pk 依旧用稳定的哈希，
+327:     同一篇文章重复发布不会插两行（这里用毫秒时间戳做后缀，保证「每次发布算一篇新文章」）。
+328:     """
+329:     tenant_id = tenant_id or settings.default_tenant
+
+(Showing lines 260-329 of 365. Use offset=330 to continue.)
+</content>
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\pyproject.toml","new_string":"    # 检索与精排\n    \"pymilvus>=2.6\",\n    \"httpx>=0.27\",","old_string":"    # 检索\n    \"pymilvus>=2.6\","}
+
+[tool • edit]
+The file D:\zuixin\pyproject.toml has been updated successfully.
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\backend\\app\\agents\\nodes\\gather_evidence.py","new_string":"def retrieve_policy(state: TicketState) -> list[dict[str, Any]]:\n    \"\"\"查公司制度：Milvus 双路召回 + RRF 粗排 → Cross-Encoder 精排 → policy_evidence（带引用）。\"\"\"","old_string":"def retrieve_policy(state: TicketState) -> list[dict[str, Any]]:\n    \"\"\"查公司制度：Milvus 混合检索 → policy_evidence（带引用）。\"\"\""}
+
+[tool • edit]
+The file D:\zuixin\backend\app\agents\nodes\gather_evidence.py has been updated successfully.
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\frontend\\src\\views\\ChatView.vue","new_string":"  {\n    icon: 'book',\n    title: '知识问答',\n    desc: '7 份制度、97 个切片，双路混合召回 + 精排，回答必带引用。',\n    foot: 'Recall@3 98.0% · 引用准确率 100%',\n  },","old_string":"  {\n    icon: 'book',\n    title: '知识问答',\n    desc: '7 份制度、97 个切片，双路混合检索，回答必带引用。',\n    foot: 'Recall@3 96.1% · 引用准确率 100%',\n  },"}
+
+[tool • edit]
+The file D:\zuixin\frontend\src\views\ChatView.vue has been updated successfully.
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\README.md","new_string":"| **二级混合检索** | Milvus 稠密 1024 维 + 内置中文 BM25 经 `RRFRanker(k=60)` 粗排 Top-10 → `gte-rerank-v2` Cross-Encoder 精排融合取 Top-3（带 `tenant_id` 过滤与异常自动降级） |\n| **有评测与消融** | 51 条标注问句：Recall@1 **86.27%**（+3.92pp）、Recall@3 **98.04%**（+1.96pp）、MRR@3 **0.9150**；20 条端到端用例引用准确率 **100%** |","old_string":"| **混合检索** | Milvus 稠密 1024 维 + 服务端内置中文 BM25，`RRFRanker(k=60)` 融合，带 `tenant_id` 过滤 |\n| **有评测** | 51 条标注问句：Recall@3 **96.08%**、MRR@3 **0.892**；20 条端到端用例引用准确率 **100%** |"}
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\README.md","new_string":"| 检索 | Milvus（稠密 1024 维 + 内置 BM25，服务端 `RRFRanker(k=60)` 粗排）+ DashScope `gte-rerank-v2` Cross-Encoder 精排 |","old_string":"| 检索 | Milvus（稠密 1024 维 + 内置 BM25，服务端 `RRFRanker(k=60)`） |"}
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\README.md","new_string":"    rag/            Milvus 读写、Cross-Encoder 精排（reranker.py）、embedding、MinerU 解析、结构感知切分","old_string":"    rag/            Milvus 读写、embedding、MinerU 解析、结构感知切分"}
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\README.md","new_string":"## 评测\n\n51 条标注问句（标注到\"文档 + 小节\"）对 97 个 chunk，支持一键跑纯 RRF 粗排 vs RRF+Cross-Encoder 精排消融对照及 20 条端到端引用准确率：\n\n```bash\n.venv/Scripts/python.exe -m scripts.eval_rag --compare --answers 20\n```\n\n| 方案 / 指标 | Recall@1 | Recall@3 | MRR@3 | 检索平均 / P95 延迟 |\n|---|---|---|---|---|\n| Dense + BM25 + RRF (Top-3) | 82.35% | 96.08% | 0.8922 | 235 / 330 ms |\n| **+ `gte-rerank-v2` 精排 (Top-10 → Top-3)** | **86.27%** (+3.92pp) | **98.04%** (+1.96pp) | **0.9150** (+0.0228) | 382 / 486 ms |\n\n- **端到端回答（20 条真模型）**：引用准确率 **100%**、引用标记率 **100%**，平均耗时 3.37 s / P95 4.22 s（详见 [`docs/eval/report.md`](docs/eval/report.md)）。","old_string":"## 评测\n\n51 条标注问句（标注到\"文档 + 小节\"）对 97 个 chunk，20 条端到端用例：\n\n```bash\n.venv/Scripts/python.exe -m scripts.eval_rag --answers 20\n```\n\n| 指标 | 数值 |\n|---|---|\n| Recall@1 / Recall@3 | 82.35% / **96.08%** |\n| MRR@3 | 0.892 |\n| 端到端引用准确率 | **100%** |\n| 检索 P95 / 端到端 P95 | 310–530 ms / 2.9–6.4 s（随模型排队波动） |"}
+
+[assistant • edit]
+{"file_path":"D:\\zuixin\\README.md","new_string":"- 没有登录/JWT：身份走请求头（`X-User-Id` / `X-Tenant-Id` / `X-Roles`），权限在 MCP server 侧校验；\n- 未做检索前 Query Rewrite：最后 1 条未进 Top-3 的问句（`g49`：\"我能查到别的子公司的工单吗\" vs 制度术语\"跨租户访问\"）在双路初筛 Top-20 阶段即被高频词\"工单\"挤出候选池，需结合同义词改写或更大候选池进一步召回；\n- 单 Agent：单链路业务，拆多 Agent 只会多同步成本；","old_string":"- 没有登录/JWT：身份走请求头（`X-User-Id` / `X-Tenant-Id` / `X-Roles`），权限在 MCP server 侧校验；\n- 没有 cross-encoder 精排：两条检索未命中（`g33` / `g49`）需要精排才能补；\n- 单 Agent：单链路业务，拆多 Agent 只会多同步成本；"}
+
+[tool • edit]
+The file D:\zuixin\README.md has been updated successfully.
+
+[tool • edit]
+The file D:\zuixin\README.md has been updated successfully.
+
+[tool • edit]
+The file D:\zuixin\README.md has been updated successfully.
+
+[tool • edit]
+The file D:\zuixin\README.md has been updated successfully.
+
+[tool • edit]
+The file D:\zuixin\README.md has been updated successfully.

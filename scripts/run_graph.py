@@ -1,19 +1,23 @@
-﻿r"""CLI锛氫笉鍚姩 FastAPI 涔熻兘鍦ㄥ懡浠よ鎶婃暣寮犲浘璧板畬锛堢敤浜庢湰鍦拌仈璋冦€佹柇鐐规仮澶嶄笌鐘舵€佹鏌ワ級銆?
-鐢ㄦ硶锛堝湪椤圭洰鏍圭洰褰曘€佺敤 .venv 鐨?python锛夛細
+r"""CLI：不启动 FastAPI 也能在命令行把整张图走完（用于本地联调、断点恢复与状态检查）。
 
-    python -m scripts.run_graph run    --thread t1 -m "鍙戠エ鎬庝箞寮€"
-    python -m scripts.run_graph run    --thread t2 -m "甯垜寤轰釜宸ュ崟锛氳储鍔＄郴缁熺櫥褰曚笉涓婏紝褰卞搷 3 涓汉"
+用法（在项目根目录、用 .venv 的 python）：
+
+    python -m scripts.run_graph run    --thread t1 -m "发票怎么开"
+    python -m scripts.run_graph run    --thread t2 -m "帮我建个工单：财务系统登录不上，影响 3 个人"
     python -m scripts.run_graph state  --thread t2
     python -m scripts.run_graph resume --thread t2 --approve
-    python -m scripts.run_graph resume --thread t2 --edit urgency=high,title="璐㈠姟绯荤粺鐧诲綍澶辫触"
+    python -m scripts.run_graph resume --thread t2 --edit urgency=high,title="财务系统登录失败"
     python -m scripts.run_graph resume --thread t2 --answer ticket_no=TK-20261031-0001
-    python -m scripts.run_graph resume --thread t2 --reject -m "鏍囬鍐欓敊浜?
+    python -m scripts.run_graph resume --thread t2 --reject -m "标题写错了"
     python -m scripts.run_graph chat   --thread t9
     python -m scripts.run_graph graph
     python -m scripts.run_graph tools
-    python -m scripts.run_graph approvals --role approver          # 瀹℃壒涓績锛堣皝鐢宠銆佷粈涔堜簨銆佹壒娌℃壒锛?    python -m scripts.run_graph approvals --status pending --role approver
+    python -m scripts.run_graph approvals --role approver          # 审批中心（谁申请、什么事、批没批）
+    python -m scripts.run_graph approvals --status pending --role approver
     
-璺ㄨ繘绋嬫仮澶嶇殑鍏抽敭锛氬悓涓€涓?--thread 鍙奖鍝?config.configurable.thread_id锛?State 鏃╁氨钀藉湪 Postgres锛堟垨鍏滃簳 SQLite锛夐噷浜嗭紝杩涚▼閫€鍑轰笉褰卞搷銆?"""
+跨进程恢复的关键：同一个 --thread 只影响 config.configurable.thread_id，
+State 早就落在 Postgres（或兜底 SQLite）里了，进程退出不影响。
+"""
 
 from __future__ import annotations
 
@@ -29,7 +33,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 
 # --------------------------------------------------------------------------- #
-# 鍩虹璁炬柦锛氫笂涓嬫枃 / 閰嶇疆 / 鎵撳嵃
+# 基础设施：上下文 / 配置 / 打印
 # --------------------------------------------------------------------------- #
 def _context(args) -> UserContext:
     roles = tuple(args.role or ["employee"])
@@ -48,38 +52,38 @@ def _config(args) -> dict[str, Any]:
 def _print_interrupt(payload: Any) -> None:
     data = dict(payload or {})
     kind = data.get("type")
-    print("\n[鏆傚仠] 绛変綘涓€鍙ヨ瘽" + (f"锛堢被鍨嬶細{kind}锛? if kind else ""))
+    print("\n[暂停] 等你一句话" + (f"（类型：{kind}）" if kind else ""))
     if data.get("question"):
-        print(f"  AI 闂細{data['question']}")
+        print(f"  AI 问：{data['question']}")
     if data.get("title"):
-        print(f"  鏍囬锛歿data['title']}")
+        print(f"  标题：{data['title']}")
     if data.get("hint"):
-        print(f"  鎻愮ず锛歿data['hint']}")
+        print(f"  提示：{data['hint']}")
     for field in data.get("fields") or []:
         source = field.get("source")
         print(f"  - {field.get('label')}: {field.get('value')}  [{source}]")
     if data.get("citations"):
-        print("  寮曠敤锛? + "銆?.join(str(x) for x in data["citations"] if x))
-    print("  缁х画锛歱ython -m scripts.run_graph resume --thread <id> --approve / --reject / --edit k=v / --answer k=v")
-    print("\n[鍘熷杞借嵎]")
+        print("  引用：" + "、".join(str(x) for x in data["citations"] if x))
+    print("  继续：python -m scripts.run_graph resume --thread <id> --approve / --reject / --edit k=v / --answer k=v")
+    print("\n[原始载荷]")
     print(json.dumps(data, ensure_ascii=False, indent=2, default=str))
 
 
 def _show_result(result: dict[str, Any]) -> None:
-    print("\n[瀹屾垚]")
+    print("\n[完成]")
     for key in ("outcome", "intent", "gate", "via"):
         if result.get(key):
             print(f"  {key:10s}: {result[key]}")
     if result.get("reply"):
-        print("\n[鍥炲]")
+        print("\n[回复]")
         print(result["reply"])
     evidence = result.get("policy_evidence") or []
     if evidence:
-        print("\n[寮曠敤]")
+        print("\n[引用]")
         for item in evidence:
             print(f"  {item.get('citation')}  score={item.get('score')}")
     if result.get("error"):
-        print(f"\n[閿欒] {result['error']}")
+        print(f"\n[错误] {result['error']}")
 
 
 def _snapshot_summary(snapshot: Any) -> dict[str, Any]:
@@ -95,7 +99,8 @@ def _snapshot_summary(snapshot: Any) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# 瀛愬懡浠?# --------------------------------------------------------------------------- #
+# 子命令
+# --------------------------------------------------------------------------- #
 def _invoke(args, resume_payload: dict[str, Any] | None = None) -> dict[str, Any]:
     graph = get_graph()
     config = _config(args)
@@ -144,7 +149,7 @@ def cmd_resume(args) -> None:
     elif args.approve:
         payload = {"type": "decision", "decision": {"type": "approve"}}
     elif args.reject:
-        payload = {"type": "decision", "decision": {"type": "reject", "message": args.message or "涓嶅悓鎰?}}
+        payload = {"type": "decision", "decision": {"type": "reject", "message": args.message or "不同意"}}
     elif args.edit:
         payload = {"type": "decision", "decision": {"type": "edit", "patch": _parse_pairs(args.edit)}}
     else:
@@ -171,13 +176,13 @@ def cmd_tools(args) -> None:
 
     print(json.dumps(mcp_client.transport_info(), ensure_ascii=False, indent=2))
     catalog = mcp_client.tool_catalog()
-    print(f"\n鍏?{len(catalog)} 涓伐鍏凤細")
+    print(f"\n共 {len(catalog)} 个工具：")
     for item in catalog:
         print(f"  [{item['server']}] {item['name']:22s} {item['label']:8s} {item['risk']}")
 
 
 def _actor(args) -> dict[str, Any]:
-    """CLI 鍙傛暟 鈫?韬唤绁ㄦ嵁锛堝拰鑺傜偣閲岀殑 actor_of 鍚屼竴涓舰鐘讹級銆?""
+    """CLI 参数 → 身份票据（和节点里的 actor_of 同一个形状）。"""
     return {"user_id": args.user, "tenant_id": args.tenant, "roles": list(args.role or ["employee"])}
 
 
@@ -189,10 +194,10 @@ def cmd_approvals(args) -> None:
 
 
 def cmd_chat(args) -> None:
-    print("杈撳叆闂锛屽洖杞﹀彂閫侊紱:q 閫€鍑恒€?)
+    print("输入问题，回车发送；:q 退出。")
     while True:
         try:
-            line = input("\n浣? ").strip()
+            line = input("\n你> ").strip()
         except (EOFError, KeyboardInterrupt):
             break
         if not line:
@@ -204,61 +209,61 @@ def cmd_chat(args) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# 鍙傛暟
+# 参数
 # --------------------------------------------------------------------------- #
 def _add_common(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--thread", default="t1", help="浼氳瘽 id锛? thread_id锛岃法杩涚▼鎭㈠闈犲畠锛?)
-    parser.add_argument("--tenant", default="tenant-demo", help="绉熸埛 id锛堝绉熸埛闅旂锛?)
-    parser.add_argument("--user", default="u-1001", help="鍛樺伐 id")
+    parser.add_argument("--thread", default="t1", help="会话 id（= thread_id，跨进程恢复靠它）")
+    parser.add_argument("--tenant", default="tenant-demo", help="租户 id（多租户隔离）")
+    parser.add_argument("--user", default="u-1001", help="员工 id")
     parser.add_argument(
         "--role",
         action="append",
         choices=["employee", "approver", "kb_owner"],
-        help="瑙掕壊锛屽彲閲嶅锛?-role employee --role kb_owner",
+        help="角色，可重复：--role employee --role kb_owner",
     )
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="SmartDesk-Agent 鏈嶅姟鍙?Agent CLI")
+    parser = argparse.ArgumentParser(description="SmartDesk-Agent 服务台 Agent CLI")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    run = sub.add_parser("run", help="鍙戜竴鍙ヨ瘽锛岃窇鍒版殏鍋滄垨缁撴潫")
+    run = sub.add_parser("run", help="发一句话，跑到暂停或结束")
     _add_common(run)
-    run.add_argument("-m", "--message", required=True, help="鍛樺伐璇寸殑璇?)
+    run.add_argument("-m", "--message", required=True, help="员工说的话")
     run.set_defaults(func=cmd_run)
 
-    resume = sub.add_parser("resume", help="浠庢殏鍋滅偣缁х画锛堢‘璁?/ 瀹℃壒 / 琛ュ厖淇℃伅锛?)
+    resume = sub.add_parser("resume", help="从暂停点继续（确认 / 审批 / 补充信息）")
     _add_common(resume)
-    resume.add_argument("--approve", action="store_true", help="鍚屾剰")
-    resume.add_argument("--reject", action="store_true", help="椹冲洖")
-    resume.add_argument("--edit", help="鏀瑰瓧娈靛悗缁х画锛屽 urgency=high,title=\"xxx\"")
-    resume.add_argument("--answer", help="琛ュ厖淇℃伅锛屽 ticket_no=TK-20261031-0001")
-    resume.add_argument("-m", "--message", help="椹冲洖鐞嗙敱")
+    resume.add_argument("--approve", action="store_true", help="同意")
+    resume.add_argument("--reject", action="store_true", help="驳回")
+    resume.add_argument("--edit", help="改字段后继续，如 urgency=high,title=\"xxx\"")
+    resume.add_argument("--answer", help="补充信息，如 ticket_no=TK-20261031-0001")
+    resume.add_argument("-m", "--message", help="驳回理由")
     resume.set_defaults(func=cmd_resume)
 
-    state = sub.add_parser("state", help="鐪嬪綋鍓?State 蹇収锛堝仠鍦ㄥ摢涓妭鐐广€佹湁鍝簺瀛楁锛?)
+    state = sub.add_parser("state", help="看当前 State 快照（停在哪个节点、有哪些字段）")
     _add_common(state)
     state.set_defaults(func=cmd_state)
 
-    graph = sub.add_parser("graph", help="鎵撳嵃 Mermaid 鍥?)
+    graph = sub.add_parser("graph", help="打印 Mermaid 图")
     _add_common(graph)
     graph.set_defaults(func=cmd_graph)
 
-    tools = sub.add_parser("tools", help="鍒?MCP 宸ュ叿涓庝紶杈撴柟寮?)
+    tools = sub.add_parser("tools", help="列 MCP 工具与传输方式")
     _add_common(tools)
     tools.set_defaults(func=cmd_tools)
 
-    chat = sub.add_parser("chat", help="浜や簰寮忚亰澶?)
+    chat = sub.add_parser("chat", help="交互式聊天")
     _add_common(chat)
     chat.set_defaults(func=cmd_chat)
 
-    approvals = sub.add_parser("approvals", help="瀹℃壒涓績锛氬垪瀹℃壒鐣欑棔锛坧ending / approved / rejected锛?)
+    approvals = sub.add_parser("approvals", help="审批中心：列审批留痕（pending / approved / rejected）")
     _add_common(approvals)
     approvals.add_argument(
         "--status",
         default="",
         choices=["", "pending", "approved", "edited", "rejected", "rejected_permission"],
-        help="鍙湅鏌愪釜鐘舵€?,
+        help="只看某个状态",
     )
     approvals.add_argument("--limit", type=int, default=20)
     approvals.set_defaults(func=cmd_approvals)
@@ -276,3 +281,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
