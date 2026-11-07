@@ -24,29 +24,29 @@
 ## 架构
 
 ```mermaid
-flowchart TD
-  S([用户提问]) --> C["classify_request<br/>意图分类：chat / knowledge / action"]
+graph TD
+  S(["用户提问"]) --> C["classify_request<br/>意图分类：chat / knowledge / action"]
 
-  C -->|chat| R["compose_reply<br/>闲聊直接回，不检索"]
-  C -->|knowledge / action| G["gather_evidence<br/>检索制度 + 查工单事实"]
+  C -->|"chat"| R["compose_reply<br/>闲聊直接回，不检索"]
+  C -->|"knowledge / action"| G["gather_evidence<br/>检索制度 + 查工单事实"]
 
-  G -->|knowledge| A["answer_with_citations<br/>只依据检索结果，强制引用"]
-  G -->|action| P["plan_action<br/>参数抽取 + 权限预检 + 定风险"]
+  G -->|"knowledge"| A["answer_with_citations<br/>只依据检索结果，强制引用"]
+  G -->|"action"| P["plan_action<br/>参数抽取 + 权限预检 + 定风险"]
 
-  P -->|缺必填参数| M["ask_missing_info<br/>clarify 闸门"]
+  P -->|"缺必填参数"| M["ask_missing_info<br/>clarify 闸门"]
   M --> P
 
-  P -->|只读 read| E["execute_action<br/>全图唯一写节点"]
-  P -->|可逆写 write_reversible| CF["confirm_action<br/>本人确认"]
-  P -->|不可逆写 write_irreversible| AP["approve_action<br/>主管审批"]
+  P -->|"只读 read"| E["execute_action<br/>全图唯一写节点"]
+  P -->|"可逆写 write_reversible"| CF["confirm_action<br/>本人确认"]
+  P -->|"不可逆写 write_irreversible"| AP["approve_action<br/>主管审批"]
 
-  CF -->|改参数导致风险升级| AP
+  CF -->|"改参数导致风险升级"| AP
   CF --> E
   AP --> E
 
   A --> R
   E --> R
-  R --> END([返回前端 / CLI])
+  R --> DONE(["返回前端 / CLI"])
 ```
 
 两条关键约束写死在代码里，不靠提示词：
