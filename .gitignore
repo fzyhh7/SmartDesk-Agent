@@ -25,3 +25,8 @@ __pycache__/
 
 # 本地 Git portable
 .git-portable/
+
+# 简历与背诵材料
+简历agent/
+AI-Agent简历项目规划*
+docs/讲解卡.md
