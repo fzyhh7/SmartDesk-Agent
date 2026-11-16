@@ -11,8 +11,8 @@
 - approve_action 里"发起"和"批准"是两件事：员工发起不可逆动作只会进 pending 队列，
   能不能点通过看**恢复那一刻的身份**（主管拿同一个 thread_id resume 就能批）。
 
-路由统一写在本文件：每个条件边配一个**纯函数 router**，节点只负责"算 + 返回字段"。
-这样分支决策集中在一处、可读可测，而不是在各个节点内部散落跳转逻辑。
+路由本文件只管**装配**：五个条件边的判断函数在 `routing.py`（纯函数、零第三方依赖，
+`tests/test_routing.py` 直接断言「什么状态 → 下一跳是谁」，不用起 langgraph）。
 唯一会让图"停下来"的是三个闸门里的 `interrupt()`（ask_missing_info / confirm_action / approve_action）。
 """
 
@@ -31,6 +31,14 @@ from .nodes.gather_evidence import gather_evidence
 from .nodes.human_gate import approve_action, confirm_action
 from .nodes.plan_action import plan_action
 from .nodes.respond import compose_reply
+from .routing import (
+    GATE_TO_NODE,
+    route_after_classify,
+    route_after_confirm,
+    route_after_gather,
+    route_after_human,
+    route_after_plan,
+)
 from .state import TicketState, UserContext
 
 NodeName = Literal[
@@ -45,50 +53,9 @@ NodeName = Literal[
     "compose_reply",
 ]
 
-# gate → 节点名：plan_action 只写 gate（clarify/confirm/approve/execute），不决定去哪
-GATE_TO_NODE: dict[str, str] = {
-    "clarify": "ask_missing_info",
-    "confirm": "confirm_action",
-    "approve": "approve_action",
-    "execute": "execute_action",
-}
-
-
 # 路由函数一律"直接返回目标节点名的精确 Literal"：
 # 这样 LangGraph draw_mermaid() 只会画出真实可达的边，图结构一目了然。
-def route_after_classify(state: TicketState) -> Literal["compose_reply", "gather_evidence"]:
-    """闲聊不查资料；其余都要先取证据。"""
-    return "compose_reply" if state.get("intent") == "chat" else "gather_evidence"
-
-
-def route_after_gather(state: TicketState) -> Literal["plan_action", "answer_with_citations"]:
-    """要动手（动作型）才进 plan_action；问知识直接答。"""
-    return "plan_action" if state.get("intent") == "action" else "answer_with_citations"
-
-
-def route_after_plan(
-    state: TicketState,
-) -> Literal["compose_reply", "ask_missing_info", "confirm_action", "approve_action", "execute_action"]:
-    """没办成（denied / rejected / failed）→ 回复；否则按 gate 进对应的门。"""
-    if state.get("outcome"):
-        return "compose_reply"
-    gate = state.get("gate") or "execute"
-    return GATE_TO_NODE.get(gate, "execute_action")  # type: ignore[return-value]
-
-
-def route_after_confirm(
-    state: TicketState,
-) -> Literal["compose_reply", "approve_action", "execute_action"]:
-    """被拒/没资格 → 回复；改出不可逆参数 → 补一道审批；否则直接执行。"""
-    if state.get("outcome"):
-        return "compose_reply"
-    return "approve_action" if state.get("gate") == "approve" else "execute_action"
-
-
-def route_after_human(state: TicketState) -> Literal["compose_reply", "execute_action"]:
-    """没人批 / 执行前就失败 → 回复；批过了 → 执行。"""
-    return "compose_reply" if state.get("outcome") else "execute_action"
-
+# 实现放在 `routing.py`（纯函数、零第三方依赖），本文件只负责接到边上。
 
 
 def compile_graph(*, checkpointer=None):

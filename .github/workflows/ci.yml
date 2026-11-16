@@ -1,0 +1,29 @@
+name: ci
+
+# 只跑「不需要外部依赖」的检查：单测 + 语法编译。
+# 需要 Milvus / LLM / API Key 的链路（检索、作答）不在 CI 里跑，
+# 它们由 docs/eval/report.md 那次消融评测覆盖，避免 CI 变慢或因为没 key 而假红。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pytest
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Unit tests
+        run: python -m pytest
+
+      - name: Compile check
+        run: python -m compileall -q backend scripts

@@ -12,6 +12,15 @@ deploy/data/
 Thumbs.db
 *.log
 
+# 一次性脚本与渲染产物（改简历 / 排版时产生，不属于仓库内容）
+.tmp-*
+.tmp_*
+.dsh-office-*
+.dsh-render-*
+
+# 包管理器缓存
+.uv-cache/
+
 # 前端构建产物
 node_modules/
 dist/

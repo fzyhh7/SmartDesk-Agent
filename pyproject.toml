@@ -36,3 +36,16 @@ url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 default = true
 
 
+[dependency-groups]
+# 只跑单测需要的东西：被测的 action_spec / guard / routing 全是纯函数（只用标准库），
+# 所以这里不放 langgraph / pymilvus——CI 60 秒内能跑完，也不会因为没 API Key 而失败。
+dev = ["pytest>=8.0"]
+
+
+[tool.pytest.ini_options]
+# 让 `pytest` 在仓库根直接跑，不用先 pip install -e .
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+
+

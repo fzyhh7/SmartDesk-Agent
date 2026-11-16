@@ -1,5 +1,7 @@
 # SmartDesk-Agent · 企业内部服务台 Agent
 
+[![tests](https://github.com/fzyhh7/SmartDesk-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/fzyhh7/SmartDesk-Agent/actions/workflows/ci.yml)
+
 **用自然语言问制度、查工单、建单、关单。Agent 要么给出带引用的答案，要么把写操作做成分级闸门——只读直通，可逆写要本人确认，不可逆/对外要主管审批，停下时状态写进 checkpoint，换个进程也能接着批。**
 
 ![会话工作台：一次关单动作停在审批闸门](docs/screenshots/02-chat-approval.png)
@@ -14,7 +16,7 @@
 
 | | |
 |---|---|
-| **9 节点 / 5 条路由** | 分支全部集中在 `backend/app/agents/graph.py`，节点只返回字段，路由才知道下一站 |
+| **9 节点 / 5 条路由** | 图装配在 `backend/app/agents/graph.py`，分支判断在 `routing.py`（5 个纯函数，`tests/test_routing.py` 直接断言下一跳） |
 | **3 级风险闸门** | `action_spec.py` 的 `RISK_BY_OP` + `compute_risk()`：同一动作带不同参数，风险可以不同 |
 | **跨进程审批** | `interrupt` 挂起 → 记录进 `approvals`（带 `thread_id`）→ 审批中心点一下，用同一个 `thread_id` resume |
 | **2 个 MCP server / 9 个工具** | 工单库和知识库各一个 FastMCP server，**鉴权在 server 侧**（同租户 + 本人/特权），不靠前端藏按钮 |
@@ -86,7 +88,7 @@ graph TD
 
 ```
 backend/app/
-  agents/           主图与节点：graph.py state.py checkpoint.py knowledge.py
+  agents/           主图与节点：graph.py（装配） routing.py（5 个纯函数路由） state.py checkpoint.py knowledge.py
     nodes/          9 个节点 + 动作规则表（action_spec.py）
     rag/            Milvus 读写、Cross-Encoder 精排（reranker.py）、embedding、MinerU 解析、结构感知切分
     tools/          MCP 客户端与工具封装
@@ -94,12 +96,28 @@ backend/app/
   mcp/servers/      ticket_server.py / kb_server.py / guard.py（鉴权）
   api/              main.py routes.py streaming.py deps.py
 frontend/src/        styles/（设计 token）components/ views/ stores/ utils/
+tests/              90 个纯函数单测（风险表 / 鉴权矩阵 / 路由），pytest 秒级跑完、不需要 key
 scripts/             run_graph（CLI）/ ingest_docs（入库）/ eval_rag（评测）/ trace_run / reset_demo（重置演示数据）
 deploy/              docker-compose.yml（Milvus / etcd / PostgreSQL / attu）
 docs/kb/             知识库源文档（7 份虚构制度）、PDF、解析产物、chunks
 docs/eval/           51 条评测集与报告
 docs/screenshots/    界面截图
 ```
+
+## 测试
+
+```bash
+uv sync --group dev     # 只装 pytest
+python -m pytest        # 90 passed in 0.12s
+```
+
+被测的三块都是**纯函数**，所以不需要 Milvus、不需要 LLM、不需要 API Key，CI 里 1 秒跑完：
+
+| 测试文件 | 钉住什么 |
+|---|---|
+| `tests/test_action_spec.py` | 同一动作带不同参数风险会变（关单+通知 → 不可逆）、风险到闸门的映射、卡片字段可编辑性 |
+| `tests/test_guard.py` | 3 角色 × 读/改/关的权限矩阵、跨租户一律拒绝、未知角色不得提权 |
+| `tests/test_routing.py` | 5 个路由：什么状态下一跳去哪（含"确认阶段改出不可逆参数要补一道审批"） |
 
 ## 快速开始
 
