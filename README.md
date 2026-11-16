@@ -4,24 +4,33 @@
 
 **用自然语言问制度、查工单、建单、关单。Agent 要么给出带引用的答案，要么把写操作做成分级闸门——只读直通，可逆写要本人确认，不可逆/对外要主管审批，停下时状态写进 checkpoint，换个进程也能接着批。**
 
+- **9 节点状态机 / 5 条条件边**：装配在 `graph.py`，分支判断在 `routing.py`（5 个纯函数）——单测直接断言"什么状态下一跳去哪"，不用起 langgraph
+- **3 级风险闸门**：风险由「动作 + 参数」共同决定——关单时勾了"通知提单人"，就从「可逆写」自动升到「不可逆写」；**发起 ≠ 批准**，恢复时按恢复人身份二次鉴权
+- **2 个 MCP server / 9 个工具**：工单库与知识库各一个 FastMCP server，**鉴权在 server 侧**（同租户 + 本人/特权），不靠前端藏按钮
+- **二级混合检索 + 消融验证**：Milvus 稠密 + 内置 BM25 → `RRFRanker(k=60)` 粗排 Top-10 → `gte-rerank-v2` 精排 Top-3；51 条标注集 Recall@1 **86.27%**（+3.92pp）、Recall@3 **98.04%**、MRR@3 **0.9150**，20 条端到端引用准确率 **100%**
+
 ![会话工作台：一次关单动作停在审批闸门](docs/screenshots/02-chat-approval.png)
+
+## 实现索引
+
+想改什么，就去这几个文件（每条都是纯函数或纯装配，改完 `pytest` 立刻知道有没有改坏）：
+
+| 想改的 | 去哪看 |
+|---|---|
+| 加/删节点、改跳转 | `agents/graph.py`（装配） · `agents/routing.py`（5 个分支函数） |
+| 改风险策略、闸门档位 | `agents/nodes/action_spec.py`：`RISK_BY_OP` / `compute_risk()` / `GATE_BY_RISK` / `is_unapproved_irreversible()` |
+| 改审批语义（谁确认、谁批准、self_approved） | `agents/nodes/human_gate.py`：`confirm_action` / `approve_action` |
+| 改工具、改鉴权 | `mcp/servers/ticket_server.py` · `kb_server.py` · `guard.py`（权限矩阵） |
+| 改检索（粗排 / 精排 / 降级） | `agents/rag/vector_store.py`（RRF 粗排） · `agents/rag/reranker.py`（Cross-Encoder 精排） |
+| 复现评测数字 | `python -m scripts.eval_rag --compare --answers 20` → `docs/eval/report.md` |
+
+## 三条设计取舍
 
 核心不是"把知识库接进模型"，而是把 **回答** 和 **动作** 分开：
 
 - **回答**只依据检索到的制度，强制带 `[1][2]` 引用，找不到就说"知识库没有这条"并给下一步；
 - **动作**按危险程度分级，风险不是静态配置：关单时勾了"通知提单人"，风险就从「可逆写」自动升到「不可逆写」；
 - **谁批准**由权限算出来，不由对话里说了什么算：恢复时按恢复人的角色二次鉴权，发起人批自己的单会被标 `self_approved`。
-
-## 30 秒看懂
-
-| | |
-|---|---|
-| **9 节点 / 5 条路由** | 图装配在 `backend/app/agents/graph.py`，分支判断在 `routing.py`（5 个纯函数，`tests/test_routing.py` 直接断言下一跳） |
-| **3 级风险闸门** | `action_spec.py` 的 `RISK_BY_OP` + `compute_risk()`：同一动作带不同参数，风险可以不同 |
-| **跨进程审批** | `interrupt` 挂起 → 记录进 `approvals`（带 `thread_id`）→ 审批中心点一下，用同一个 `thread_id` resume |
-| **2 个 MCP server / 9 个工具** | 工单库和知识库各一个 FastMCP server，**鉴权在 server 侧**（同租户 + 本人/特权），不靠前端藏按钮 |
-| **二级混合检索** | Milvus 稠密 1024 维 + 内置中文 BM25 经 `RRFRanker(k=60)` 粗排 Top-10 → `gte-rerank-v2` Cross-Encoder 精排融合取 Top-3（带 `tenant_id` 过滤与异常自动降级） |
-| **有评测与消融** | 51 条标注问句：Recall@1 **86.27%**（+3.92pp）、Recall@3 **98.04%**（+1.96pp）、MRR@3 **0.9150**；20 条端到端用例引用准确率 **100%** |
 
 ## 架构
 
