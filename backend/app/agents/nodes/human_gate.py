@@ -296,6 +296,7 @@ def approve_action(state: TicketState, runtime: Runtime[UserContext]) -> dict[st
     )
     approval = {
         "approver": decider.user_id,
+        "decision": DECISION_STATUS.get(kind, "rejected"),
         "roles": list(decider.roles),
         "required_roles": allowed_roles,
         "requested_by": requested_by,

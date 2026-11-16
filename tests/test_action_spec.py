@@ -171,15 +171,34 @@ def test_fields_of_keeps_arg_order():
         # 不可逆 + 审批记录里没有 approver（比如只有 pending 一条）→ 仍然拦
         ({"risk": "write_irreversible", "approval": {"status": "pending"}}, True),
         ({"risk": "write_irreversible", "approval": {"approver": ""}}, True),
-        # 不可逆 + 真有批准人 → 放行
-        ({"risk": "write_irreversible", "approval": {"approver": "u-9001"}}, False),
+        # 不可逆 + 真有批准人、结论是批准 → 放行
+        (
+            {"risk": "write_irreversible", "approval": {"approver": "u-9001", "decision": "approved"}},
+            False,
+        ),
+        # 审批人改了参数后放行（edited）同样是批准
+        (
+            {"risk": "write_irreversible", "approval": {"approver": "u-9001", "decision": "edited"}},
+            False,
+        ),
+        # **关键**：审批人点的是驳回。approver 有值（谁做的决定），但不是批准 → 必须拦
+        (
+            {
+                "risk": "write_irreversible",
+                "approval": {"approver": "u-9001", "decision": "rejected"},
+                "outcome": "rejected",
+            },
+            True,
+        ),
+        # 老 checkpoint 没有 decision 字段 → 按"未批准"处理（宁可拦住，不猜）
+        ({"risk": "write_irreversible", "approval": {"approver": "u-9001"}}, True),
         # 可逆写 / 只读：这一步不管（它由前面的确认闸门负责）
         ({"risk": "write_reversible"}, False),
         ({"risk": "write_reversible", "approval": {}}, False),
         ({"risk": "read"}, False),
         # risk 缺失或 State 为空 → 不是不可逆动作，不拦（避免 KeyError 把正常链路搞崩）
         ({}, False),
-        ({"approval": {"approver": "u-9001"}}, False),
+        ({"approval": {"approver": "u-9001", "decision": "approved"}}, False),
     ],
 )
 def test_is_unapproved_irreversible(state, expected):

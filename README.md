@@ -96,7 +96,7 @@ backend/app/
   mcp/servers/      ticket_server.py / kb_server.py / guard.py（鉴权）
   api/              main.py routes.py streaming.py deps.py
 frontend/src/        styles/（设计 token）components/ views/ stores/ utils/
-tests/              90 个纯函数单测（风险表 / 鉴权矩阵 / 路由），pytest 秒级跑完、不需要 key
+tests/              103 个纯函数单测（风险表 / 鉴权矩阵 / 路由 / 执行前兜底），pytest 秒级跑完、不需要 key
 scripts/             run_graph（CLI）/ ingest_docs（入库）/ eval_rag（评测）/ trace_run / reset_demo（重置演示数据）
 deploy/              docker-compose.yml（Milvus / etcd / PostgreSQL / attu）
 docs/kb/             知识库源文档（7 份虚构制度）、PDF、解析产物、chunks
@@ -108,14 +108,14 @@ docs/screenshots/    界面截图
 
 ```bash
 uv pip install pytest    # 只需要 pytest 一个依赖（或 uv sync --group dev）
-python -m pytest         # 90 passed in 0.1s
+python -m pytest         # 103 passed in 0.07s
 ```
 
 被测的三块都是**纯函数**，所以不需要 Milvus、不需要 LLM、不需要 API Key，CI 里 1 秒跑完：
 
 | 测试文件 | 钉住什么 |
 |---|---|
-| `tests/test_action_spec.py` | 同一动作带不同参数风险会变（关单+通知 → 不可逆）、风险到闸门的映射、卡片字段可编辑性 |
+| `tests/test_action_spec.py` | 同一动作带不同参数风险会变（关单+通知 → 不可逆）、风险到闸门的映射、卡片字段可编辑性、执行前的不可逆审批兜底（**驳回也算没批准**） |
 | `tests/test_guard.py` | 3 角色 × 读/改/关的权限矩阵、跨租户一律拒绝、未知角色不得提权 |
 | `tests/test_routing.py` | 5 个路由：什么状态下一跳去哪（含"确认阶段改出不可逆参数要补一道审批"） |
 

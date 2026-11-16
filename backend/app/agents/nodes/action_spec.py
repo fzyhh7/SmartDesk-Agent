@@ -56,12 +56,21 @@ GATE_BY_RISK: dict[str, str] = {
 }
 
 
+# 审批结论里哪些算"批准"（edited = 审批人改了参数后放行，同样是批准）
+APPROVED_DECISIONS = {"approved", "edited"}
+
+
 def is_unapproved_irreversible(state: Mapping[str, Any]) -> bool:
-    """最后一道闸门复核：不可逆动作没有审批凭证 → 不许执行。
+    """最后一道闸门复核：不可逆动作没有「批准」凭证 → 不许执行。
 
     `execute_action` 是唯一能改数据的节点，它进门先问这一句。正常路径上路由已经保证
     不会带着"未批准的不可逆动作"走到这里，这一层防的是**以后有人改图 / 改路由 / 改闸门
     映射，把审批绕过去**——所以它是全链路唯一一条"必须永远成立"的不变量。
+
+    凭证要求「有批准人 **且** 结论是批准」两件事同时成立：
+    `approve_action` 在**驳回**时同样会把 `approver` 写进 state（那是"谁做的这个决定"），
+    只看 approver 会让"被驳回的不可逆动作"在这层被放行。`decision` 缺省视为未批准
+    （老 checkpoint 没有这个字段 → 宁可拦住，也不猜）。
 
     抽成纯函数而不是写在节点里，是为了能单测：节点带副作用（会真的调 MCP 改库），
     而这句判断本身零依赖。
@@ -69,7 +78,8 @@ def is_unapproved_irreversible(state: Mapping[str, Any]) -> bool:
     if not state or state.get("risk") != "write_irreversible":
         return False
     approval = state.get("approval") or {}
-    return not bool(approval.get("approver"))
+    decided_ok = approval.get("decision") in APPROVED_DECISIONS
+    return not (bool(approval.get("approver")) and decided_ok)
 
 
 # 卡片上给人看的字段中文名（模型填的是英文 key）
