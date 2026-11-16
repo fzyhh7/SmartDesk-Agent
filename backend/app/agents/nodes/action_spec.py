@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 # 每个 op 归哪个 MCP server 管。为什么不在 classify 让模型输出：
 # 这是 op 的 1:1 确定性映射，模型多吐一个字段只多一个能填错的地方。
@@ -54,6 +54,23 @@ GATE_BY_RISK: dict[str, str] = {
     "write_reversible": "confirm",
     "write_irreversible": "approve",
 }
+
+
+def is_unapproved_irreversible(state: Mapping[str, Any]) -> bool:
+    """最后一道闸门复核：不可逆动作没有审批凭证 → 不许执行。
+
+    `execute_action` 是唯一能改数据的节点，它进门先问这一句。正常路径上路由已经保证
+    不会带着"未批准的不可逆动作"走到这里，这一层防的是**以后有人改图 / 改路由 / 改闸门
+    映射，把审批绕过去**——所以它是全链路唯一一条"必须永远成立"的不变量。
+
+    抽成纯函数而不是写在节点里，是为了能单测：节点带副作用（会真的调 MCP 改库），
+    而这句判断本身零依赖。
+    """
+    if not state or state.get("risk") != "write_irreversible":
+        return False
+    approval = state.get("approval") or {}
+    return not bool(approval.get("approver"))
+
 
 # 卡片上给人看的字段中文名（模型填的是英文 key）
 FIELD_LABELS: dict[str, str] = {

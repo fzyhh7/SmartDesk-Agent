@@ -1,11 +1,11 @@
-"""主图：9 个节点，四条路。
+"""主图：9 个节点、5 条条件边（业务上走 4 条路：闲聊直答 / 知识问答 / 动作过闸门 / 澄清补参）。
 
 一句话读法（每个节点名都是动词短语）：
     classify_request → gather_evidence → answer_with_citations → compose_reply      （知识型）
                                       ↘ plan_action → confirm_action / approve_action / ask_missing_info
                                                       → execute_action → compose_reply
 
-两处容易讲错的地方（面试常问）：
+两处容易被误读的实现细节（改图之前先看这两行）：
 - confirm_action 不是"确认完就执行"：员工可能在卡片上改出**不可逆**参数（关单加"通知提单人"），
   所以确认后还要按新参数重算风险，需要时补一道 approve_action（route_after_confirm）。
 - approve_action 里"发起"和"批准"是两件事：员工发起不可逆动作只会进 pending 队列，

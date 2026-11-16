@@ -22,6 +22,7 @@ from typing import Any
 from langgraph.runtime import Runtime
 
 from ..state import TicketState, UserContext, actor_of
+from .action_spec import is_unapproved_irreversible, server_of
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +83,7 @@ def execute_action(state: TicketState, runtime: Runtime[UserContext]) -> dict[st
 
     # 最后一道闸门复核：不可逆动作必须带着"已批准"的凭证，否则一律不执行。
     # （路由已经保证不会走到这里；这一层防的是以后有人改图/改路由把闸门绕过去）
-    approved = bool((state.get("approval") or {}).get("approver"))
-    if state.get("risk") == "write_irreversible" and not approved:
+    if is_unapproved_irreversible(state):
         return {
             "result": {"ok": False, "error": {"code": "blocked", "reason": "不可逆动作缺少审批"}, "op": op},
             "outcome": "failed",

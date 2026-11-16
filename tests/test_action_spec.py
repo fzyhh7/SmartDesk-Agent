@@ -14,6 +14,7 @@ from backend.app.agents.nodes.action_spec import (
     RISK_BY_OP,
     compute_risk,
     fields_of,
+    is_unapproved_irreversible,
     label_of,
     server_of,
     summary_of,
@@ -154,3 +155,32 @@ def test_fields_of_keeps_arg_order():
     """"卡片字段顺序跟着 args 走（人的眼睛按「标题 → 描述 → 优先级」读更顺）。"""
     fields = fields_of({"args": {"title": "A", "description": "B", "urgency": "高"}})
     assert [f["name"] for f in fields] == ["title", "description", "urgency"]
+
+
+# --------------------------------------------------------------------------- #
+# is_unapproved_irreversible：execute_action 进门的第一句，全链路唯一"必须永远为真"的不变量
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        # 不可逆 + 没有任何审批记录 → 必须拦下（这一条是防止有人改图绕过闸门）
+        ({"risk": "write_irreversible"}, True),
+        ({"risk": "write_irreversible", "approval": None}, True),
+        # 不可逆 + 审批记录里没有 approver（比如只有 pending 一条）→ 仍然拦
+        ({"risk": "write_irreversible", "approval": {"status": "pending"}}, True),
+        ({"risk": "write_irreversible", "approval": {"approver": ""}}, True),
+        # 不可逆 + 真有批准人 → 放行
+        ({"risk": "write_irreversible", "approval": {"approver": "u-9001"}}, False),
+        # 可逆写 / 只读：这一步不管（它由前面的确认闸门负责）
+        ({"risk": "write_reversible"}, False),
+        ({"risk": "write_reversible", "approval": {}}, False),
+        ({"risk": "read"}, False),
+        # risk 缺失或 State 为空 → 不是不可逆动作，不拦（避免 KeyError 把正常链路搞崩）
+        ({}, False),
+        ({"approval": {"approver": "u-9001"}}, False),
+    ],
+)
+def test_is_unapproved_irreversible(state, expected):
+    assert is_unapproved_irreversible(state) is expected
