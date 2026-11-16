@@ -32,7 +32,6 @@ from .nodes.human_gate import approve_action, confirm_action
 from .nodes.plan_action import plan_action
 from .nodes.respond import compose_reply
 from .routing import (
-    GATE_TO_NODE,
     route_after_classify,
     route_after_confirm,
     route_after_gather,

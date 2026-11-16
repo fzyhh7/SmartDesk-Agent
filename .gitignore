@@ -39,3 +39,4 @@ __pycache__/
 简历agent/
 AI-Agent简历项目规划*
 docs/讲解卡.md
+.ruff_cache/

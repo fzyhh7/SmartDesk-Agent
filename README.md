@@ -13,7 +13,7 @@
 
 ## 实现索引
 
-想改什么，就去这几个文件（每条都是纯函数或纯装配，改完 `pytest` 立刻知道有没有改坏）：
+想改什么，就去这几个文件（装配 / 策略 / 路由 / 权限这几类改完，`pytest` 立刻知道有没有改坏；检索那两行靠 `eval_rag` 回归，见下文「测试与 lint」）：
 
 | 想改的 | 去哪看 |
 |---|---|
@@ -113,11 +113,12 @@ docs/eval/           51 条评测集与报告
 docs/screenshots/    界面截图
 ```
 
-## 测试
+## 测试与 lint
 
 ```bash
-uv pip install pytest    # 只需要 pytest 一个依赖（或 uv sync --group dev）
-python -m pytest         # 103 passed in 0.07s
+uv pip install pytest ruff   # 只需要这两个（或 uv sync --group dev）
+python -m pytest             # 103 passed in 0.07s
+python -m ruff check .       # 未使用导入 / 未使用变量 / 语法错误（CI 里同一个命令）
 ```
 
 被测的三块都是**纯函数**，所以不需要 Milvus、不需要 LLM、不需要 API Key，CI 里 1 秒跑完：
@@ -127,6 +128,8 @@ python -m pytest         # 103 passed in 0.07s
 | `tests/test_action_spec.py` | 同一动作带不同参数风险会变（关单+通知 → 不可逆）、风险到闸门的映射、卡片字段可编辑性、执行前的不可逆审批兜底（**驳回也算没批准**） |
 | `tests/test_guard.py` | 3 角色 × 读/改/关的权限矩阵、跨租户一律拒绝、未知角色不得提权 |
 | `tests/test_routing.py` | 5 个路由：什么状态下一跳去哪（含"确认阶段改出不可逆参数要补一道审批"） |
+
+**测试覆盖不到的地方**，靠评测兜：检索链路（`vector_store.py` 的粗排、`reranker.py` 的精排与降级）没有单测，它需要 Milvus + DashScope，由 `scripts/eval_rag.py --compare` 跑 51 条标注问句回归——改检索参数后跑这一条命令，看 `docs/eval/report.md` 的 Recall@1/3、MRR 有没有掉。
 
 ## 快速开始
 

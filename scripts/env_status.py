@@ -37,8 +37,7 @@ def main() -> int:
 
     print("\n[1] 密钥类（需要你自己填在仓库根 .env）")
     for name, purpose in SECRETS:
-        raw = ""
-        # 只用 settings 里的布尔判断，不取原始值
+        # 只用 settings 里的布尔判断，不取原始值（避免把 key 打到终端）
         if name == "DEEPSEEK_API_KEY":
             exists = settings.llm_enabled
         else:

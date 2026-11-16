@@ -37,9 +37,9 @@ default = true
 
 
 [dependency-groups]
-# 只跑单测需要的东西：被测的 action_spec / guard / routing 全是纯函数（只用标准库），
+# 只跑单测 + lint 需要的东西：被测的 action_spec / guard / routing 全是纯函数（只用标准库），
 # 所以这里不放 langgraph / pymilvus——CI 60 秒内能跑完，也不会因为没 API Key 而失败。
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
 
 
 [tool.pytest.ini_options]
@@ -47,5 +47,16 @@ dev = ["pytest>=8.0"]
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-q"
+
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["frontend", "deploy/data", ".venv"]
+
+[tool.ruff.lint]
+# 只开 F（pyflakes：未使用导入 / 未使用变量 / 重复定义）与 E9（语法错误）。
+# 不开 E/W 全套——那是风格偏好，收益低、噪音大。
+select = ["F", "E9"]
 
 

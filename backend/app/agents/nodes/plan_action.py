@@ -21,7 +21,7 @@ from typing import Any
 from langgraph.runtime import Runtime
 
 from ..state import TicketState, UserContext
-from .action_spec import FIELD_LABELS, GATE_BY_RISK, RISK_BY_OP, compute_risk, server_of
+from .action_spec import GATE_BY_RISK, RISK_BY_OP, compute_risk, server_of
 
 logger = logging.getLogger(__name__)
 
