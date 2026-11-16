@@ -107,8 +107,8 @@ docs/screenshots/    界面截图
 ## 测试
 
 ```bash
-uv sync --group dev     # 只装 pytest
-python -m pytest        # 90 passed in 0.12s
+uv pip install pytest    # 只需要 pytest 一个依赖（或 uv sync --group dev）
+python -m pytest         # 90 passed in 0.1s
 ```
 
 被测的三块都是**纯函数**，所以不需要 Milvus、不需要 LLM、不需要 API Key，CI 里 1 秒跑完：
